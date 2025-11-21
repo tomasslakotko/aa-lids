@@ -563,7 +563,7 @@ export const ReservationsApp = () => {
          addLog('FXH');
          addLog('PASSENGER PTC OC SRV NP PR FLGT DATE (GBP) FARE TAX TOTAL');
          
-         wipPnr.ssrs.forEach((ssr, i) => {
+         wipPnr.ssrs.forEach((ssr) => {
             if (ssr.price > 0) {
                const pax = wipPnr.passengers[ssr.passenger || 0];
                const seg = wipPnr.segments[ssr.segment || 0];
