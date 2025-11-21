@@ -220,7 +220,12 @@ export const CheckInApp = () => {
               <div className="bg-blue-600 p-6 text-white flex justify-between items-center shrink-0">
                 <div>
                   <h2 className="text-2xl font-bold tracking-wider">{foundPassenger.lastName}, {foundPassenger.firstName}</h2>
-                  <div className="opacity-80 text-sm mt-1">Seat: {foundPassenger.seat} | Status: {foundPassenger.status}</div>
+                  <div className="opacity-80 text-sm mt-1">
+                    Seat: {foundPassenger.seat} | Status: {foundPassenger.status}
+                    {foundPassenger.passengerType === 'STAFF_DUTY' && <span className="ml-2 px-2 py-0.5 bg-yellow-500 text-yellow-900 rounded text-xs font-bold">STAFF DUTY</span>}
+                    {foundPassenger.passengerType === 'STAFF_SBY' && <span className="ml-2 px-2 py-0.5 bg-orange-500 text-orange-900 rounded text-xs font-bold">STAFF STANDBY</span>}
+                    {foundPassenger.staffId && <span className="ml-2 text-xs opacity-70">ID: {foundPassenger.staffId}</span>}
+                  </div>
                 </div>
                 <span className="font-mono bg-blue-800 px-4 py-2 rounded text-xl font-bold tracking-widest">{foundPassenger.pnr}</span>
               </div>

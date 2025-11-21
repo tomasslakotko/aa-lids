@@ -299,7 +299,11 @@ export const BoardingApp = () => {
                  >
                     <div className="font-mono">{i + 1}</div>
                     <div className="font-mono font-bold">{p.pnr}</div>
-                    <div className="font-bold truncate pr-2">{p.lastName}, {p.firstName}</div>
+                    <div className="font-bold truncate pr-2">
+                      {p.lastName}, {p.firstName}
+                      {p.passengerType === 'STAFF_DUTY' && <span className="ml-1 text-[9px] bg-yellow-200 text-yellow-800 px-1 rounded">DUTY</span>}
+                      {p.passengerType === 'STAFF_SBY' && <span className="ml-1 text-[9px] bg-orange-200 text-orange-800 px-1 rounded">SBY</span>}
+                    </div>
                     <div>{selectedFlight.destination}</div>
                     <div>{getClass(p.seat)}</div>
                     <div className="font-bold">{p.seat || '-'}</div>

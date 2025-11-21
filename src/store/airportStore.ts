@@ -18,6 +18,7 @@ export interface Flight {
 }
 
 export type PassengerStatus = 'BOOKED' | 'CHECKED_IN' | 'BOARDED';
+export type PassengerType = 'REVENUE' | 'STAFF_DUTY' | 'STAFF_SBY';
 
 export interface Passenger {
   id: string;
@@ -32,6 +33,8 @@ export interface Passenger {
   passportNumber?: string;
   nationality?: string;
   expiryDate?: string;
+  passengerType?: PassengerType; // Staff duty or standby
+  staffId?: string; // Employee ID for staff
 }
 
 export interface LogEntry {
@@ -52,7 +55,7 @@ interface AirportStore {
   checkInPassenger: (pnr: string) => boolean;
   updatePassengerDetails: (pnr: string, details: Partial<Passenger>) => void;
   boardPassenger: (pnr: string) => boolean;
-  createBooking: (pnr: string, lastName: string, firstName: string, flightId: string) => void;
+  createBooking: (pnr: string, lastName: string, firstName: string, flightId: string, passengerType?: PassengerType, staffId?: string) => void;
   addLog: (message: string, source: string, type?: LogEntry['type']) => void;
   resetSimulation: () => void;
 }
@@ -212,7 +215,7 @@ export const useAirportStore = create<AirportStore>()(
         get().addLog(`Passenger details updated for ${pnr}`, 'CHECK-IN', 'INFO');
       },
 
-      createBooking: (pnr, lastName, firstName, flightId) => {
+      createBooking: (pnr, lastName, firstName, flightId, passengerType = 'REVENUE', staffId) => {
         set((state) => ({
           passengers: [...state.passengers, {
              id: Math.random().toString(36).substr(2, 9),
@@ -220,13 +223,16 @@ export const useAirportStore = create<AirportStore>()(
              firstName,
              lastName,
              flightId,
-             seat: 'REQ',
+             seat: passengerType === 'STAFF_SBY' ? 'SBY' : 'REQ',
              status: 'BOOKED',
              hasBags: false,
-             bagCount: 0
+             bagCount: 0,
+             passengerType,
+             staffId
           }]
         }));
-        get().addLog(`New Booking Created: ${lastName}/${firstName} (${pnr})`, 'RESERVATIONS', 'SUCCESS');
+        const typeLabel = passengerType === 'STAFF_DUTY' ? 'STAFF DUTY' : passengerType === 'STAFF_SBY' ? 'STAFF STANDBY' : 'REVENUE';
+        get().addLog(`New Booking Created: ${lastName}/${firstName} (${pnr}) [${typeLabel}]`, 'RESERVATIONS', 'SUCCESS');
       },
 
       boardPassenger: (pnr) => {
