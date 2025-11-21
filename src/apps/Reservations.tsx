@@ -151,7 +151,6 @@ export const ReservationsApp = () => {
         return;
       }
 
-      const qty = parseInt(match[1]);
       const classCode = match[2];
       const lineNum = parseInt(match[3]);
 
@@ -413,12 +412,12 @@ export const ReservationsApp = () => {
             lineIdx++;
          });
          
-         wipPnr.segments.forEach((s, i) => {
+         wipPnr.segments.forEach((s) => {
             addLog(`  ${lineIdx}  ${s.flightNumber} Y 10NOV ${s.origin}${s.destination} HK${wipPnr.passengers.length}       ${s.std} ${s.etd}   ${s.gate} E`);
             lineIdx++;
          });
          
-         wipPnr.ssrs.forEach((ssr, i) => {
+         wipPnr.ssrs.forEach((ssr) => {
             const seg = wipPnr.segments[ssr.segment || 0];
             const paxNum = (ssr.passenger || 0) + 1;
             addLog(`  ${lineIdx} /SSR ${ssr.code} U2 HK1${seg ? ` ${seg.origin}${seg.destination}` : ''}/P${paxNum}/S${(ssr.segment || 0) + 1} SEE RTSTR`);
@@ -471,7 +470,7 @@ export const ReservationsApp = () => {
             lineIdx++;
          });
          
-         wipPnr.segments.forEach((s, i) => {
+         wipPnr.segments.forEach((s) => {
             addLog(`  ${lineIdx}  ${s.flightNumber} Y 10NOV ${s.origin}${s.destination} HK${wipPnr.passengers.length}       ${s.std} ${s.etd}   ${s.gate} E`);
             lineIdx++;
          });
@@ -487,7 +486,7 @@ export const ReservationsApp = () => {
          }
          
          // Show SSRs
-         wipPnr.ssrs.forEach((ssr, i) => {
+         wipPnr.ssrs.forEach((ssr) => {
             const seg = wipPnr.segments[ssr.segment || 0];
             const paxNum = (ssr.passenger || 0) + 1;
             addLog(`  ${lineIdx} /SSR ${ssr.code} U2 HK1 ${seg.origin}${seg.destination}/P${paxNum}/S${(ssr.segment || 0) + 1} SEE RTSTR`);
@@ -538,7 +537,7 @@ export const ReservationsApp = () => {
          if (chargeableSSRs.length === 0) {
             addLog('NO CHARGEABLE SERVICES - ALL FREE');
          } else {
-            chargeableSSRs.forEach((ssr, i) => {
+            chargeableSSRs.forEach((ssr) => {
                const pax = wipPnr.passengers[ssr.passenger || 0];
                const seg = wipPnr.segments[ssr.segment || 0];
                const dateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase().replace(' ', '');
