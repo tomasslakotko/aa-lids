@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply overflow-hidden bg-os-bg text-os-text select-none;
+}
+
+/* Custom scrollbar for webkit */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-os-panel;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-os-border rounded hover:bg-slate-600;
+}

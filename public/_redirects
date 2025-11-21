@@ -1,0 +1,5 @@
+# Netlify deployment configuration
+# This file ensures the React SPA routes work correctly
+
+/*    /index.html   200
+
