@@ -8,7 +8,11 @@ import {
   ShieldAlert, 
   CalendarDays, 
   Luggage, 
-  Activity 
+  Activity,
+  Headphones,
+  Megaphone,
+  MonitorPlay,
+  Tv
 } from 'lucide-react';
 
 // Import Apps
@@ -19,6 +23,10 @@ import { SecurityApp } from './apps/Security';
 import { FlightCoordinatorApp } from './apps/FlightCoordinator';
 import { BaggageApp } from './apps/Baggage';
 import { OCCApp } from './apps/OCC';
+import { CustomerServiceApp } from './apps/CustomerService';
+import { AnnouncementsApp } from './apps/Announcements';
+import { FIDSApp } from './apps/FIDS';
+import { GateScreenApp } from './apps/GateScreen';
 
 function App() {
   const registerApp = useOSStore((state) => state.registerApp);
@@ -61,7 +69,8 @@ function App() {
       icon: Plane,
       component: BoardingApp,
       defaultWidth: 800,
-      defaultHeight: 600
+      defaultHeight: 600,
+      folder: 'GATE'
     });
 
     registerApp({
@@ -84,11 +93,11 @@ function App() {
 
     registerApp({
       id: 'baggage',
-      title: 'Baggage Handling',
+      title: 'BRS Ramp System',
       icon: Luggage,
       component: BaggageApp,
-      defaultWidth: 900,
-      defaultHeight: 500
+      defaultWidth: 500,
+      defaultHeight: 800
     });
 
     registerApp({
@@ -98,6 +107,45 @@ function App() {
       component: OCCApp,
       defaultWidth: 1200,
       defaultHeight: 800
+    });
+
+    registerApp({
+      id: 'customerservice',
+      title: 'Customer Service',
+      icon: Headphones,
+      component: CustomerServiceApp,
+      defaultWidth: 1100,
+      defaultHeight: 800
+    });
+
+    registerApp({
+      id: 'announcements',
+      title: 'PA System',
+      icon: Megaphone,
+      component: AnnouncementsApp,
+      defaultWidth: 1000,
+      defaultHeight: 700,
+      folder: 'GATE'
+    });
+
+    registerApp({
+      id: 'fids',
+      title: 'Flight Info',
+      icon: MonitorPlay,
+      component: FIDSApp,
+      defaultWidth: 1200,
+      defaultHeight: 800,
+      folder: 'GATE'
+    });
+
+    registerApp({
+      id: 'gatescreen',
+      title: 'Gate Screen',
+      icon: Tv,
+      component: GateScreenApp,
+      defaultWidth: 1200,
+      defaultHeight: 800,
+      folder: 'GATE'
     });
 
   }, [registerApp]);

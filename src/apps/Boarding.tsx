@@ -4,7 +4,7 @@ import clsx from 'clsx';
 import { 
   Users, User, ArrowLeft, HelpCircle, 
   Printer, Plus, UserPlus, UserMinus,
-  CheckCircle
+  CheckCircle, MessageSquare
 } from 'lucide-react';
 
 // Mock helper for gender (random for demo since we don't store it)
@@ -24,11 +24,16 @@ export const BoardingApp = () => {
   const [selectedFlightId, setSelectedFlightId] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'ALL' | 'CHECKED_IN' | 'BOARDED' | 'WAITLIST'>('ALL');
   const [selectedPaxId, setSelectedPaxId] = useState<string | null>(null);
+  const [gateMsg, setGateMsg] = useState('');
 
   const flights = useAirportStore((state) => state.flights);
   const passengers = useAirportStore((state) => state.passengers);
   const boardPassenger = useAirportStore((state) => state.boardPassenger);
   const updateFlightStatus = useAirportStore((state) => state.updateFlightStatus);
+  const updateGateMessage = useAirportStore((state) => state.updateGateMessage);
+  const offloadPassenger = useAirportStore((state) => state.offloadPassenger);
+  const addNoRecPassenger = useAirportStore((state) => state.addNoRecPassenger);
+  const updatePassengerDetails = useAirportStore((state) => state.updatePassengerDetails);
 
   const selectedFlight = flights.find(f => f.id === selectedFlightId);
   
@@ -79,6 +84,7 @@ export const BoardingApp = () => {
     if (found) {
       setSelectedFlightId(found.id);
       setFlightInput(found.flightNumber);
+      setGateMsg(found.gateMessage || '');
     } else {
       alert('Flight not found');
     }
@@ -86,6 +92,42 @@ export const BoardingApp = () => {
 
   const handleBoardPax = (pnr: string) => {
     boardPassenger(pnr);
+  };
+
+  const handleGateMessageUpdate = () => {
+    if (selectedFlightId) {
+        updateGateMessage(selectedFlightId, gateMsg);
+        alert('Message updated on Gate Screen');
+    }
+  };
+
+  const handleOffload = () => {
+    if (!selectedPaxId) return alert('Select a passenger first');
+    const pax = passengers.find(p => p.id === selectedPaxId);
+    if (pax && confirm(`Offload ${pax.lastName}?`)) {
+        offloadPassenger(pax.pnr);
+    }
+  };
+
+  const handlePromoteWait = () => {
+    if (!selectedPaxId) return alert('Select a passenger first');
+    const pax = passengers.find(p => p.id === selectedPaxId);
+    if (pax) {
+        const newSeat = prompt('Enter Seat Assignment:', '10A');
+        if (newSeat) {
+            updatePassengerDetails(pax.pnr, { seat: newSeat, status: 'CHECKED_IN' });
+        }
+    }
+  };
+
+  const handleAddNoRec = () => {
+    const name = prompt('Enter LASTNAME/FIRSTNAME (e.g. SMITH/JOHN)');
+    if (name && selectedFlightId) {
+        const [last, first] = name.split('/');
+        if (last && first) {
+            addNoRecPassenger(last, first, selectedFlightId);
+        }
+    }
   };
 
   // --- RENDER HELPERS ---
@@ -146,7 +188,7 @@ export const BoardingApp = () => {
           </div>
           <div className="flex gap-2 text-xs border p-1 bg-gray-50 border-gray-300">
              <span className="font-bold">{selectedFlight.aircraft}</span>
-             <span>REG: YL-CSL</span>
+             <span>REG: {selectedFlight.registration || 'TBD'}</span>
              <span>145/145Y</span>
           </div>
           
@@ -223,7 +265,24 @@ export const BoardingApp = () => {
       <div className="bg-gray-100 p-1 border-b border-gray-400 flex gap-2">
          <button onClick={() => setSelectedFlightId('')} className="flex items-center gap-1 px-3 py-1 bg-gray-200 border border-gray-400 rounded hover:bg-gray-300 text-xs"><ArrowLeft size={12} /> Back</button>
          <button className="flex items-center gap-1 px-3 py-1 bg-gray-200 border border-gray-400 rounded hover:bg-gray-300 text-xs"><Printer size={12} /> Briefsheet</button>
-         <div className="flex-1"></div>
+         <div className="flex-1 flex justify-center gap-2">
+            {/* Gate Message Input */}
+            <div className="flex items-center gap-2 bg-white border border-gray-300 rounded px-2">
+                <MessageSquare size={12} className="text-gray-500" />
+                <input 
+                    className="w-64 outline-none text-xs py-1" 
+                    placeholder="Enter Gate Screen Message..." 
+                    value={gateMsg}
+                    onChange={(e) => setGateMsg(e.target.value)}
+                />
+                <button 
+                    onClick={handleGateMessageUpdate}
+                    className="text-[10px] bg-blue-600 text-white px-2 py-0.5 rounded uppercase font-bold"
+                >
+                    Update Screen
+                </button>
+            </div>
+         </div>
          <button className="flex items-center gap-1 px-3 py-1 bg-gray-200 border border-gray-400 rounded hover:bg-gray-300 text-xs"><HelpCircle size={12} /> Help</button>
       </div>
 
@@ -234,9 +293,9 @@ export const BoardingApp = () => {
             <button className="text-left px-2 py-2 bg-gray-100 border border-gray-400 hover:bg-blue-50 rounded flex items-center gap-2"><User size={14}/> Select Pax</button>
             <button className="text-left px-2 py-2 bg-gray-100 border border-gray-400 hover:bg-blue-50 rounded flex items-center gap-2"><Users size={14}/> Select Group</button>
             <div className="h-px bg-gray-300 my-1"></div>
-            <button className="text-left px-2 py-2 bg-gray-100 border border-gray-400 hover:bg-blue-50 rounded flex items-center gap-2"><UserPlus size={14}/> Promote Wait</button>
-            <button className="text-left px-2 py-2 bg-gray-100 border border-gray-400 hover:bg-blue-50 rounded flex items-center gap-2"><UserMinus size={14}/> Offload Pax</button>
-            <button className="text-left px-2 py-2 bg-gray-100 border border-gray-400 hover:bg-blue-50 rounded flex items-center gap-2"><Plus size={14}/> Add NoRec</button>
+            <button onClick={handlePromoteWait} className="text-left px-2 py-2 bg-gray-100 border border-gray-400 hover:bg-blue-50 rounded flex items-center gap-2"><UserPlus size={14}/> Promote Wait</button>
+            <button onClick={handleOffload} className="text-left px-2 py-2 bg-gray-100 border border-gray-400 hover:bg-blue-50 rounded flex items-center gap-2"><UserMinus size={14}/> Offload Pax</button>
+            <button onClick={handleAddNoRec} className="text-left px-2 py-2 bg-gray-100 border border-gray-400 hover:bg-blue-50 rounded flex items-center gap-2"><Plus size={14}/> Add NoRec</button>
          </div>
 
          {/* CENTER LIST */}

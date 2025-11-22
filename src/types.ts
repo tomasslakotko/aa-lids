@@ -5,6 +5,7 @@ export interface AppConfig {
   component: React.ComponentType;
   defaultWidth?: number;
   defaultHeight?: number;
+  folder?: string;
 }
 
 export interface WindowState {
@@ -17,4 +18,3 @@ export interface WindowState {
   position: { x: number; y: number };
   size: { width: number; height: number };
 }
-

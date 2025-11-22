@@ -10,11 +10,15 @@ export interface Flight {
   flightNumber: string; // e.g. BA117
   origin: string;
   destination: string;
+  originCity?: string;
+  destinationCity?: string;
   std: string; // Scheduled Time of Departure (ISO string or HH:mm)
   etd: string; // Estimated Time of Departure
   gate: string;
   status: FlightStatus;
   aircraft: string; // e.g. B744
+  registration?: string; // e.g. YL-CSL
+  gateMessage?: string; // Custom message for Gate Screen
 }
 
 export type PassengerStatus = 'BOOKED' | 'CHECKED_IN' | 'BOARDED';
@@ -25,11 +29,13 @@ export interface Passenger {
   pnr: string; // 6-char Booking Reference
   firstName: string;
   lastName: string;
+  title?: string;
   flightId: string;
   seat: string;
   status: PassengerStatus;
   hasBags: boolean;
   bagCount: number;
+  bagsLoaded?: number; // Number of bags loaded onto aircraft
   passportNumber?: string;
   nationality?: string;
   expiryDate?: string;
@@ -45,19 +51,58 @@ export interface LogEntry {
   type: 'INFO' | 'WARNING' | 'ERROR' | 'SUCCESS';
 }
 
+export interface Voucher {
+  id: string;
+  pnr: string;
+  amount: number;
+  currency: string;
+  reason: string;
+  issuedDate: string;
+  expiryDate: string;
+  status: 'ACTIVE' | 'USED' | 'EXPIRED';
+}
+
+export interface Complaint {
+  id: string;
+  pnr: string;
+  passengerName: string;
+  category: string;
+  description: string;
+  status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+  createdAt: string;
+  resolvedAt?: string;
+  resolution?: string;
+}
+
 interface AirportStore {
   flights: Flight[];
   passengers: Passenger[];
   logs: LogEntry[];
+  vouchers: Voucher[];
+  complaints: Complaint[];
   
   // Actions
   updateFlightStatus: (flightId: string, status: FlightStatus) => void;
+  updateGateMessage: (flightId: string, message: string) => void;
+  updateFlightDetails: (flightId: string, updates: Partial<Flight>) => void;
   checkInPassenger: (pnr: string) => boolean;
   updatePassengerDetails: (pnr: string, details: Partial<Passenger>) => void;
+  offloadPassenger: (pnr: string) => void;
+  loadBag: (pnr: string) => void;
+  unloadBag: (pnr: string) => void;
+  addNoRecPassenger: (lastName: string, firstName: string, flightId: string) => void;
   boardPassenger: (pnr: string) => boolean;
   createBooking: (pnr: string, lastName: string, firstName: string, flightId: string, passengerType?: PassengerType, staffId?: string) => void;
   addLog: (message: string, source: string, type?: LogEntry['type']) => void;
   resetSimulation: () => void;
+  
+  // Customer Service Actions
+  rebookPassenger: (pnr: string, newFlightId: string) => boolean;
+  processRefund: (pnr: string, amount: number, reason: string) => boolean;
+  upgradePassenger: (pnr: string, newClass: 'J' | 'Y') => boolean;
+  issueVoucher: (pnr: string, amount: number, reason: string) => string;
+  createComplaint: (pnr: string, passengerName: string, category: string, description: string) => string;
+  updateComplaint: (complaintId: string, status: Complaint['status'], resolution?: string) => void;
 }
 
 // --- Data Generation ---
@@ -111,11 +156,14 @@ const generateFlights = (): Flight[] => {
        flightNumber: dest.flight,
        origin: HUB,
        destination: dest.code,
+       originCity: 'Riga',
+       destinationCity: dest.city,
        std: std,
        etd: std, // On time initially
        gate: ['B', 'C'][Math.floor(Math.random()*2)] + Math.floor(Math.random() * 20 + 1),
        status: 'SCHEDULED',
-       aircraft: 'BCS3' // A220-300
+       aircraft: 'BCS3', // A220-300
+       registration: 'YL-CS' + ['L', 'A', 'B', 'M', 'N'][Math.floor(Math.random() * 5)]
      });
   });
 
@@ -130,24 +178,27 @@ const generateFlights = (): Flight[] => {
        flightNumber: returnFlightNum,
        origin: dest.code,
        destination: HUB,
+       originCity: dest.city,
+       destinationCity: 'Riga',
        std: std,
        etd: std,
        gate: ['B', 'C'][Math.floor(Math.random()*2)] + Math.floor(Math.random() * 20 + 1),
        status: 'SCHEDULED',
-       aircraft: 'BCS3'
+       aircraft: 'BCS3',
+       registration: 'YL-CS' + ['L', 'A', 'B', 'M', 'N'][Math.floor(Math.random() * 5)]
      });
   });
   
   // 3. Connecting legs (Partners / Long Haul) from Spoke to World
   // Designed to create connections: RIX -> HUB -> WORLD
   const CONNECTING_ROUTES = [
-    { num: 'DL047', org: 'AMS', dest: 'JFK', dep: '11:00', aircraft: 'A333' },
-    { num: 'BA117', org: 'LGW', dest: 'JFK', dep: '12:30', aircraft: 'B777' },
-    { num: 'LH404', org: 'FRA', dest: 'JFK', dep: '13:15', aircraft: 'B748' },
-    { num: 'AF006', org: 'CDG', dest: 'JFK', dep: '14:00', aircraft: 'B77W' },
-    { num: 'UA999', org: 'LHR', dest: 'EWR', dep: '15:00', aircraft: 'B763' },
-    { num: 'EK150', org: 'LGW', dest: 'DXB', dep: '13:45', aircraft: 'A388' },
-    { num: 'QR010', org: 'LHR', dest: 'DOH', dep: '14:20', aircraft: 'A359' },
+    { num: 'DL047', org: 'AMS', dest: 'JFK', city: 'New York', orgCity: 'Amsterdam', dep: '11:00', aircraft: 'A333' },
+    { num: 'BA117', org: 'LGW', dest: 'JFK', city: 'New York', orgCity: 'London', dep: '12:30', aircraft: 'B777' },
+    { num: 'LH404', org: 'FRA', dest: 'JFK', city: 'New York', orgCity: 'Frankfurt', dep: '13:15', aircraft: 'B748' },
+    { num: 'AF006', org: 'CDG', dest: 'JFK', city: 'New York', orgCity: 'Paris', dep: '14:00', aircraft: 'B77W' },
+    { num: 'UA999', org: 'LHR', dest: 'EWR', city: 'Newark', orgCity: 'London', dep: '15:00', aircraft: 'B763' },
+    { num: 'EK150', org: 'LGW', dest: 'DXB', city: 'Dubai', orgCity: 'London', dep: '13:45', aircraft: 'A388' },
+    { num: 'QR010', org: 'LHR', dest: 'DOH', city: 'Doha', orgCity: 'London', dep: '14:20', aircraft: 'A359' },
   ];
   
   CONNECTING_ROUTES.forEach(route => {
@@ -156,11 +207,14 @@ const generateFlights = (): Flight[] => {
        flightNumber: route.num,
        origin: route.org,
        destination: route.dest,
+       originCity: route.orgCity,
+       destinationCity: route.city,
        std: route.dep,
        etd: route.dep,
        gate: 'X' + Math.floor(Math.random() * 99),
        status: 'SCHEDULED',
-       aircraft: route.aircraft
+       aircraft: route.aircraft,
+       registration: 'XX-' + Math.random().toString(36).substr(2, 3).toUpperCase() + Math.floor(Math.random() * 99)
      });
   });
 
@@ -177,18 +231,36 @@ const INITIAL_PASSENGERS: Passenger[] = [
   },
 ];
 
+const INITIAL_VOUCHERS: Voucher[] = [];
+const INITIAL_COMPLAINTS: Complaint[] = [];
+
 export const useAirportStore = create<AirportStore>()(
   persist(
     (set, get) => ({
       flights: INITIAL_FLIGHTS,
       passengers: INITIAL_PASSENGERS,
       logs: [],
+      vouchers: INITIAL_VOUCHERS,
+      complaints: INITIAL_COMPLAINTS,
 
       updateFlightStatus: (flightId, status) => {
         set((state) => ({
           flights: state.flights.map(f => f.id === flightId ? { ...f, status } : f)
         }));
         get().addLog(`Flight ${flightId} status changed to ${status}`, 'OCC', 'INFO');
+      },
+
+      updateGateMessage: (flightId, message) => {
+        set((state) => ({
+          flights: state.flights.map(f => f.id === flightId ? { ...f, gateMessage: message } : f)
+        }));
+      },
+
+      updateFlightDetails: (flightId, updates) => {
+        set((state) => ({
+          flights: state.flights.map(f => f.id === flightId ? { ...f, ...updates } : f)
+        }));
+        get().addLog(`Flight details updated for ${flightId}`, 'OCC', 'INFO');
       },
 
       checkInPassenger: (pnr) => {
@@ -213,6 +285,54 @@ export const useAirportStore = create<AirportStore>()(
           )
         }));
         get().addLog(`Passenger details updated for ${pnr}`, 'CHECK-IN', 'INFO');
+      },
+
+      offloadPassenger: (pnr) => {
+        set((state) => ({
+          passengers: state.passengers.map(p => 
+            p.pnr === pnr ? { ...p, status: 'BOOKED', seat: '', bagCount: 0, hasBags: false, bagsLoaded: 0 } : p
+          )
+        }));
+        get().addLog(`Passenger ${pnr} offloaded`, 'BOARDING', 'WARNING');
+      },
+
+      loadBag: (pnr) => {
+        set((state) => ({
+          passengers: state.passengers.map(p => 
+            p.pnr === pnr 
+              ? { ...p, bagsLoaded: Math.min((p.bagsLoaded || 0) + 1, p.bagCount) } 
+              : p
+          )
+        }));
+      },
+
+      unloadBag: (pnr) => {
+        set((state) => ({
+          passengers: state.passengers.map(p => 
+            p.pnr === pnr 
+              ? { ...p, bagsLoaded: Math.max((p.bagsLoaded || 0) - 1, 0) } 
+              : p
+          )
+        }));
+      },
+
+      addNoRecPassenger: (lastName, firstName, flightId) => {
+        const pnr = Math.random().toString(36).substr(2, 6).toUpperCase();
+        set((state) => ({
+          passengers: [...state.passengers, {
+             id: Math.random().toString(36).substr(2, 9),
+             pnr,
+             firstName,
+             lastName,
+             flightId,
+             seat: 'SBY',
+             status: 'CHECKED_IN',
+             hasBags: false,
+             bagCount: 0,
+             passengerType: 'REVENUE'
+          }]
+        }));
+        get().addLog(`NoRec added: ${lastName}/${firstName} (${pnr})`, 'BOARDING', 'WARNING');
       },
 
       createBooking: (pnr, lastName, firstName, flightId, passengerType = 'REVENUE', staffId) => {
@@ -263,11 +383,132 @@ export const useAirportStore = create<AirportStore>()(
       },
 
       resetSimulation: () => {
-        set({ flights: generateFlights(), passengers: [], logs: [] });
+        set({ flights: generateFlights(), passengers: [], logs: [], vouchers: [], complaints: [] });
+      },
+      
+      // Customer Service Actions
+      rebookPassenger: (pnr, newFlightId) => {
+        const state = get();
+        const passenger = state.passengers.find(p => p.pnr === pnr);
+        if (!passenger) return false;
+        if (passenger.status === 'BOARDED') {
+          get().addLog(`Cannot rebook boarded passenger ${pnr}`, 'CUSTOMER_SERVICE', 'ERROR');
+          return false;
+        }
+        
+        const newFlight = state.flights.find(f => f.id === newFlightId);
+        if (!newFlight) return false;
+        
+        set((state) => ({
+          passengers: state.passengers.map(p => 
+            p.pnr === pnr ? { ...p, flightId: newFlightId, seat: 'REQ', status: 'BOOKED' } : p
+          )
+        }));
+        
+        get().addLog(`Passenger ${passenger.lastName} (${pnr}) rebooked to ${newFlight.flightNumber}`, 'CUSTOMER_SERVICE', 'SUCCESS');
+        return true;
+      },
+      
+      processRefund: (pnr, amount, reason) => {
+        const state = get();
+        const passenger = state.passengers.find(p => p.pnr === pnr);
+        if (!passenger) return false;
+        
+        get().addLog(`Refund processed for ${passenger.lastName} (${pnr}): €${amount.toFixed(2)} - ${reason}`, 'CUSTOMER_SERVICE', 'SUCCESS');
+        return true;
+      },
+      
+      upgradePassenger: (pnr, newClass) => {
+        const state = get();
+        const passenger = state.passengers.find(p => p.pnr === pnr);
+        if (!passenger) return false;
+        
+        // Simple upgrade: assign seat in J class (rows 1-5) or Y class (rows 6+)
+        const availableSeats = newClass === 'J' 
+          ? ['1A', '1B', '1C', '1D', '2A', '2B', '2C', '2D', '3A', '3B', '3C', '3D']
+          : ['6A', '6B', '6C', '6D', '7A', '7B', '7C', '7D', '8A', '8B', '8C', '8D'];
+        
+        const flightPassengers = state.passengers.filter(p => p.flightId === passenger.flightId);
+        const occupiedSeats = flightPassengers.map(p => p.seat);
+        const newSeat = availableSeats.find(s => !occupiedSeats.includes(s)) || availableSeats[0];
+        
+        set((state) => ({
+          passengers: state.passengers.map(p => 
+            p.pnr === pnr ? { ...p, seat: newSeat } : p
+          )
+        }));
+        
+        get().addLog(`Passenger ${passenger.lastName} (${pnr}) upgraded to ${newClass} class, seat ${newSeat}`, 'CUSTOMER_SERVICE', 'SUCCESS');
+        return true;
+      },
+      
+      issueVoucher: (pnr, amount, reason) => {
+        const voucherId = Math.random().toString(36).substr(2, 9).toUpperCase();
+        const expiryDate = new Date();
+        expiryDate.setFullYear(expiryDate.getFullYear() + 1);
+        
+        const voucher: Voucher = {
+          id: voucherId,
+          pnr,
+          amount,
+          currency: 'EUR',
+          reason,
+          issuedDate: new Date().toISOString(),
+          expiryDate: expiryDate.toISOString(),
+          status: 'ACTIVE'
+        };
+        
+        set((state) => ({
+          vouchers: [...state.vouchers, voucher]
+        }));
+        
+        get().addLog(`Voucher ${voucherId} issued for ${pnr}: €${amount.toFixed(2)} - ${reason}`, 'CUSTOMER_SERVICE', 'SUCCESS');
+        return voucherId;
+      },
+      
+      createComplaint: (pnr, passengerName, category, description) => {
+        const complaintId = Math.random().toString(36).substr(2, 9).toUpperCase();
+        
+        const complaint: Complaint = {
+          id: complaintId,
+          pnr,
+          passengerName,
+          category,
+          description,
+          status: 'OPEN',
+          createdAt: new Date().toISOString()
+        };
+        
+        set((state) => ({
+          complaints: [...state.complaints, complaint]
+        }));
+        
+        get().addLog(`Complaint ${complaintId} created for ${passengerName} (${pnr}): ${category}`, 'CUSTOMER_SERVICE', 'WARNING');
+        return complaintId;
+      },
+      
+      updateComplaint: (complaintId, status, resolution) => {
+        set((state) => ({
+          complaints: state.complaints.map(c => 
+            c.id === complaintId 
+              ? { 
+                  ...c, 
+                  status, 
+                  resolution,
+                  resolvedAt: status === 'RESOLVED' || status === 'CLOSED' ? new Date().toISOString() : c.resolvedAt
+                } 
+              : c
+          )
+        }));
+        
+        const complaint = get().complaints.find(c => c.id === complaintId);
+        if (complaint) {
+          get().addLog(`Complaint ${complaintId} updated to ${status}`, 'CUSTOMER_SERVICE', 'INFO');
+        }
       }
     }),
     {
-      name: 'airport-storage-v2', // Version bumped to force new data load
+      name: 'airport-storage-v3', // Version bumped for new features
     }
   )
 );

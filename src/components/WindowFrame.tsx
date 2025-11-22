@@ -1,7 +1,7 @@
 import React from 'react';
 import { useOSStore } from '../store/osStore';
 import { X, Minus, Square, Maximize2 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion, useDragControls } from 'framer-motion';
 import clsx from 'clsx';
 
 interface WindowFrameProps {
@@ -13,6 +13,7 @@ export const WindowFrame: React.FC<WindowFrameProps> = ({ windowId }) => {
   const window = useOSStore((state) => state.windows.find((w) => w.id === windowId));
   const activeWindowId = useOSStore((state) => state.activeWindowId);
   const { closeWindow, minimizeWindow, maximizeWindow, focusWindow, updateWindowPosition } = useOSStore();
+  const dragControls = useDragControls();
 
   if (!window || window.isMinimized) return null;
 
@@ -21,6 +22,8 @@ export const WindowFrame: React.FC<WindowFrameProps> = ({ windowId }) => {
   return (
     <motion.div
       drag={!window.isMaximized}
+      dragListener={false}
+      dragControls={dragControls}
       dragMomentum={false}
       onDragEnd={(_, info) => {
         if (!window.isMaximized) {
@@ -53,7 +56,11 @@ export const WindowFrame: React.FC<WindowFrameProps> = ({ windowId }) => {
     >
       {/* Title Bar */}
       <div 
-        className="h-10 bg-os-panel border-b border-os-border flex items-center justify-between px-3 select-none"
+        className="h-10 bg-os-panel border-b border-os-border flex items-center justify-between px-3 select-none cursor-default"
+        onPointerDown={(e) => {
+          focusWindow(windowId);
+          if (!window.isMaximized) dragControls.start(e);
+        }}
         onDoubleClick={() => maximizeWindow(windowId)}
       >
         <div className="flex items-center gap-2 text-sm font-medium text-os-text">

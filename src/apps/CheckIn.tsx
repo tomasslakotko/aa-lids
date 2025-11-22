@@ -1,390 +1,993 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useAirportStore } from '../store/airportStore';
-import { Search, Check, User, Plane, AlertCircle, CreditCard, Luggage, Link as LinkIcon, MapPin } from 'lucide-react';
+import { Check, Plane, Luggage, Printer, FileText } from 'lucide-react';
 import clsx from 'clsx';
 
-// Seat Map Component
-const SeatMap = ({ 
-  occupiedSeats, 
-  currentSeat, 
-  onSelectSeat, 
-  aircraftType 
-}: { 
-  occupiedSeats: string[], 
-  currentSeat: string, 
-  onSelectSeat: (seat: string) => void,
-  aircraftType: string
-}) => {
-  // Simplified layout generation based on aircraft type (defaulting to 3-3 layout for now)
-  const rows = 20;
-  const cols = ['A', 'B', 'C', 'D', 'E', 'F'];
+// --- Legacy Components ---
 
+const Tab = ({ label, active, onClick, first }: { label: string, active: boolean, onClick: () => void, first?: boolean }) => (
+  <button
+    onClick={onClick}
+    className={clsx(
+      "relative h-8 px-4 flex items-center justify-center text-xs font-bold select-none",
+      first ? "ml-0" : "-ml-2",
+      active 
+        ? "bg-blue-700 text-white z-10" 
+        : "bg-[#D4D0C8] text-gray-600 hover:bg-[#E0DCD4] z-0"
+    )}
+    style={{
+      clipPath: "polygon(0% 0%, 90% 0%, 100% 50%, 90% 100%, 0% 100%, 10% 50%)",
+      paddingLeft: first ? "1rem" : "1.5rem",
+      paddingRight: "1rem",
+      width: "140px"
+    }}
+  >
+    {label}
+  </button>
+);
+
+const LegacyInput = ({ label, value, onChange, width = "w-full", placeholder = "" }: any) => (
+  <div className="flex flex-col">
+    <label className="text-[10px] text-blue-800 font-bold mb-0.5">{label}</label>
+    <div className="relative">
+      <input 
+        type="text" 
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        className={`h-6 border border-[#7F9DB9] bg-white px-1 text-xs outline-none focus:border-blue-500 ${width}`}
+      />
+      <div className="absolute right-0 top-0 bottom-0 w-4 bg-[#D4D0C8] border-l border-[#7F9DB9] flex items-center justify-center">
+        <div className="w-0 h-0 border-l-[3px] border-l-transparent border-r-[3px] border-r-transparent border-t-[4px] border-t-black/50" />
+      </div>
+    </div>
+  </div>
+);
+
+const LegacyButton = ({ children, onClick, primary, disabled }: any) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    className={clsx(
+      "px-4 py-1 text-xs font-bold border border-[#003C74] shadow-[1px_1px_0px_#fff_inset] active:shadow-[1px_1px_2px_#000_inset] active:translate-y-[1px]",
+      primary 
+        ? "bg-gradient-to-b from-[#B0CFF5] to-[#89B5EA] text-[#003C74]" 
+        : "bg-gradient-to-b from-[#F0F0F0] to-[#D4D0C8] text-black",
+      disabled && "opacity-50 grayscale cursor-not-allowed"
+    )}
+  >
+    {children}
+  </button>
+);
+
+const HeaderInfo = ({ flight, gate }: any) => (
+  <div className="bg-[#FDFBF7] border-b border-[#A0A0A0] px-2 py-1 text-xs font-mono flex justify-between items-center select-none">
+    <div className="flex items-center gap-4">
+      <span className="font-bold text-blue-800">✈ {flight?.flightNumber || 'NO FLIGHT'}</span>
+      <span>{flight?.std} {flight?.origin} ➔ {flight?.destination}</span>
+      {flight && <span className="text-gray-500">({flight.aircraft})</span>}
+    </div>
+    <div className="flex gap-4">
+      <span>Gate: {gate || '---'}</span>
+      <span>Boarding: {flight?.etd}</span>
+      <span className="text-green-600 font-bold">Acceptance Open</span>
+    </div>
+  </div>
+);
+
+// --- Print Components ---
+
+const Barcode = () => (
+  <div className="flex h-12 w-full overflow-hidden">
+    {Array.from({ length: 40 }).map((_, i) => (
+      <div 
+        key={i} 
+        className="bg-black h-full" 
+        style={{ 
+          width: Math.random() > 0.5 ? '2px' : '4px',
+          marginRight: Math.random() > 0.5 ? '1px' : '3px' 
+        }} 
+      />
+    ))}
+  </div>
+);
+
+const BoardingPass = ({ passenger, flight }: { passenger: any, flight: any }) => {
+  if (!passenger || !flight) return null;
   return (
-    <div className="p-6 bg-white rounded-lg border border-gray-200 shadow-sm">
-       <h3 className="text-gray-500 text-xs uppercase font-bold mb-4">Seat Map ({aircraftType})</h3>
-       
-       <div className="flex flex-col items-center gap-2 max-h-[400px] overflow-y-auto p-4 bg-gray-100 rounded-lg">
-         {/* Front of Plane Indicator */}
-         <div className="w-full h-8 bg-gray-300 rounded-t-full mb-4 opacity-20" />
-         
-         {Array.from({ length: rows }).map((_, r) => {
-           const rowNum = r + 1;
-           return (
-             <div key={rowNum} className="flex gap-8 items-center">
-               {/* Left Side */}
-               <div className="flex gap-1">
-                 {cols.slice(0, 3).map(col => {
-                   const seatId = `${rowNum}${col}`;
-                   const isOccupied = occupiedSeats.includes(seatId) && seatId !== currentSeat;
-                   const isSelected = seatId === currentSeat;
-                   
-                   return (
-                     <button
-                       key={seatId}
-                       disabled={isOccupied}
-                       onClick={() => onSelectSeat(seatId)}
-                       className={clsx(
-                         "w-8 h-8 rounded text-xs font-bold flex items-center justify-center transition-colors",
-                         isOccupied ? "bg-red-100 text-red-300 cursor-not-allowed" :
-                         isSelected ? "bg-blue-600 text-white shadow-md scale-110" :
-                         "bg-white border border-gray-300 hover:border-blue-400 hover:bg-blue-50 text-gray-600"
-                       )}
-                     >
-                       {col}
-                     </button>
-                   );
-                 })}
-               </div>
+    <div className="bg-[#EEE8DD] w-[700px] h-[280px] rounded-xl overflow-hidden flex shadow-lg font-mono text-slate-900 relative border border-gray-300">
+        {/* Left Stub */}
+        <div className="w-[500px] p-6 flex flex-col relative border-r border-dashed border-gray-400">
+            {/* Header */}
+            <div className="flex justify-between items-center mb-6">
+                <div className="text-2xl font-bold tracking-widest">BOARDING PASS:</div>
+                <div className="text-3xl font-bold italic">airBaltic</div>
+            </div>
+            
+            <div className="flex gap-12 mb-2">
+                <div>
+                    <div className="text-[10px] font-bold uppercase mb-1">FLIGHT NO:</div>
+                    <div className="text-4xl font-bold">{flight.flightNumber}</div>
+                </div>
+                <div>
+                    <div className="text-[10px] font-bold uppercase mb-1">BOARDING TIME:</div>
+                    <div className="text-4xl font-bold">{flight.etd}</div>
+                </div>
+                <div className="ml-auto text-right">
+                    <div className="text-[10px] font-bold uppercase mb-1">GATE:</div>
+                    <div className="text-2xl font-bold">{flight.gate}</div>
+                </div>
+                <div className="text-right">
+                    <div className="text-[10px] font-bold uppercase mb-1">SEAT:</div>
+                    <div className="text-4xl font-bold">{passenger.seat}</div>
+                </div>
+            </div>
 
-               {/* Aisle */}
-               <div className="text-xs font-mono text-gray-400 w-4 text-center">{rowNum}</div>
+            {/* Barcode Strip */}
+            <div className="flex gap-4 mt-4">
+                <div className="w-12 h-32 bg-black opacity-80 flex flex-col gap-0.5 overflow-hidden">
+                    {Array.from({ length: 60 }).map((_, i) => (
+                        <div key={i} className="bg-white h-[1px]" style={{ width: `${Math.random() * 100}%` }} />
+                    ))}
+                </div>
+                
+                <div className="flex-1 flex flex-col justify-center gap-2">
+                    <div>
+                        <div className="text-[10px] font-bold uppercase">NAME:</div>
+                        <div className="text-xl font-bold uppercase">{passenger.lastName}/{passenger.firstName}</div>
+                    </div>
+                    <div>
+                        <div className="text-[10px] font-bold uppercase">FROM:</div>
+                        <div className="text-lg font-bold uppercase">{flight.origin}/RIX</div>
+                    </div>
+                    <div>
+                        <div className="text-[10px] font-bold uppercase">TO:</div>
+                        <div className="text-lg font-bold uppercase">{flight.destination}/{flight.destination}</div>
+                    </div>
+                </div>
+                
+                <div className="flex flex-col justify-center gap-2">
+                    <div>
+                        <div className="text-[10px] font-bold uppercase">CLASS:</div>
+                        <div className="text-lg font-bold">Y</div>
+                    </div>
+                    <div>
+                        <div className="text-[10px] font-bold uppercase">DATE:</div>
+                        <div className="text-lg font-bold uppercase">{new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase()}</div>
+                    </div>
+                </div>
+            </div>
 
-               {/* Right Side */}
-               <div className="flex gap-1">
-                 {cols.slice(3).map(col => {
-                   const seatId = `${rowNum}${col}`;
-                   const isOccupied = occupiedSeats.includes(seatId) && seatId !== currentSeat;
-                   const isSelected = seatId === currentSeat;
-                   
-                   return (
-                     <button
-                       key={seatId}
-                       disabled={isOccupied}
-                       onClick={() => onSelectSeat(seatId)}
-                       className={clsx(
-                         "w-8 h-8 rounded text-xs font-bold flex items-center justify-center transition-colors",
-                         isOccupied ? "bg-red-100 text-red-300 cursor-not-allowed" :
-                         isSelected ? "bg-blue-600 text-white shadow-md scale-110" :
-                         "bg-white border border-gray-300 hover:border-blue-400 hover:bg-blue-50 text-gray-600"
-                       )}
-                     >
-                       {col}
-                     </button>
-                   );
-                 })}
-               </div>
-             </div>
-           );
-         })}
-       </div>
-       
-       <div className="flex gap-4 justify-center mt-4 text-xs text-gray-500">
-          <div className="flex items-center gap-1"><div className="w-3 h-3 bg-white border border-gray-300 rounded" /> Available</div>
-          <div className="flex items-center gap-1"><div className="w-3 h-3 bg-blue-600 rounded" /> Selected</div>
-          <div className="flex items-center gap-1"><div className="w-3 h-3 bg-red-100 rounded" /> Occupied</div>
-       </div>
+            <div className="mt-auto pt-2 text-[10px] font-bold flex justify-between border-t border-gray-400/30">
+                <div>HELPLINE 24-7 CALL 37167280422</div>
+                <div>PAPER TKT</div>
+            </div>
+        </div>
+
+        {/* Right Stub */}
+        <div className="flex-1 p-4 flex flex-col bg-[#EEE8DD]">
+            <div className="text-right mb-4">
+                <div className="text-xl font-bold italic">airBaltic</div>
+            </div>
+            
+            <div className="flex justify-between mb-4">
+                <div>
+                    <div className="text-[10px] font-bold uppercase">CLASS:</div>
+                    <div className="text-xl font-bold">Y</div>
+                </div>
+                <div className="text-right">
+                    <div className="text-[10px] font-bold uppercase">SEAT:</div>
+                    <div className="text-3xl font-bold">{passenger.seat}</div>
+                </div>
+            </div>
+            
+            <div className="text-xs font-bold uppercase mb-4">ECONOMY CLASS</div>
+            
+            <div className="space-y-1 text-[10px] font-bold uppercase">
+                <div className="truncate">{passenger.lastName}/{passenger.firstName}</div>
+                <div>{flight.flightNumber} {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase()}</div>
+                <div>FROM: {flight.origin}/RIX</div>
+                <div>TO: {flight.destination}/{flight.destination}</div>
+            </div>
+            
+            <div className="mt-4">
+                <div className="text-[9px] uppercase">DEPARTURE TIME:</div>
+                <div className="text-lg font-bold">{flight.std}</div>
+            </div>
+            
+            <div className="mt-auto flex justify-between items-end text-[10px] font-bold">
+                <div>SEQUENCE NO: 0056</div>
+                <div>PAPER TKT</div>
+            </div>
+        </div>
+        
+        {/* Sequence overlay on left */}
+        <div className="absolute bottom-4 left-[300px] text-lg font-bold font-mono">SEQUENCE NO: 0056</div>
     </div>
   );
 };
 
+const BagTag = ({ passenger, flight, bagIndex, weight }: { passenger: any, flight: any, bagIndex: number, weight: number }) => {
+    if (!passenger || !flight) return null;
+    
+    return (
+        <div className="bg-white w-[180px] h-[500px] border border-gray-300 shadow-lg flex flex-col font-sans text-slate-900 overflow-hidden relative">
+            
+            {/* Top Barcode Section */}
+            <div className="p-2 text-center border-b-2 border-black">
+                <div className="h-16 w-full overflow-hidden mb-1"><Barcode /></div>
+                <div className="h-8 w-full overflow-hidden px-2 mb-1"><Barcode /></div>
+                <div className="flex justify-between text-[10px] font-mono font-bold px-2">
+                    <span>{flight.origin}</span>
+                    <span>/</span>
+                    <span>{flight.destination}</span>
+                </div>
+                <div className="flex justify-between text-[10px] font-bold px-2 mt-1">
+                    <span>0074KL</span>
+                    <span>774268</span>
+                </div>
+            </div>
+
+            {/* Destination Section */}
+            <div className="border-b-2 border-black relative h-48 flex flex-col justify-center items-center bg-white overflow-hidden">
+                {/* Green Strips */}
+                <div className="absolute left-0 top-0 bottom-0 w-4 bg-[#90C978]" />
+                <div className="absolute right-0 top-0 bottom-0 w-4 bg-[#90C978]" />
+                
+                <div className="text-xs uppercase font-bold mb-1 w-full text-center">{flight.origin} / {flight.destination}</div>
+                <div className="text-7xl font-black tracking-tighter z-10 bg-white px-2">{flight.destination}</div>
+                
+                <div className="mt-2 flex items-center gap-2 z-10 bg-white px-2">
+                    <span className="text-xl font-bold">TO</span>
+                    <span className="text-3xl font-bold">{flight.flightNumber}</span>
+                </div>
+            </div>
+
+            {/* Passenger Info */}
+            <div className="p-2 text-xs font-bold border-b border-dashed border-gray-400">
+                <div className="uppercase truncate">{passenger.lastName}/{passenger.firstName}</div>
+                <div className="flex justify-between mt-1">
+                    <span>WGT: {weight}KG</span>
+                    <span>SEQ: 00{bagIndex + 1}</span>
+                </div>
+            </div>
+
+            {/* Bottom Stubs */}
+            <div className="mt-auto">
+                {[1, 2, 3].map((stub) => (
+                    <div key={stub} className="border-t border-dashed border-gray-400 p-1 flex flex-col items-center justify-center h-12">
+                        <div className="flex justify-between w-full px-2 text-[9px] font-mono mb-0.5">
+                            <span>0074KL</span>
+                            <span>774268</span>
+                            <span>0{bagIndex}0</span>
+                        </div>
+                        <div className="h-6 w-full px-4 overflow-hidden opacity-80"><Barcode /></div>
+                    </div>
+                ))}
+                {/* Bottom Black Strip */}
+                <div className="bg-black h-4 w-full" />
+            </div>
+        </div>
+    );
+};
+
+// --- Main Application ---
+
 export const CheckInApp = () => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [searchedPnr, setSearchedPnr] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'DETAILS' | 'DOCS' | 'BAGS' | 'LINK' | 'SEAT'>('DETAILS');
+  // States mimicking the screens
+  const [currentScreen, setCurrentScreen] = useState<'IDENTIFICATION' | 'SELECTION' | 'ACCEPTANCE' | 'SEAT_MAP' | 'BAGGAGE'>('IDENTIFICATION');
   
+  // Identification Form State
+  const [identName, setIdentName] = useState('');
+  const [identPnr, setIdentPnr] = useState('');
+  const [identFlight, setIdentFlight] = useState('');
+  const [identFlightPrefix, setIdentFlightPrefix] = useState('BT');
+  
+  // Selection/Acceptance State
+  const [selectedPnr, setSelectedPnr] = useState<string | null>(null);
+  const [bagPcs, setBagPcs] = useState('0');
+  const [bagKg, setBagKg] = useState('0');
+  const [showFqtvModal, setShowFqtvModal] = useState(false);
+  
+  // Baggage Editing State
+  const [editingBagIndex, setEditingBagIndex] = useState<number | null>(null);
+  const [editWeight, setEditWeight] = useState('');
+  const [customBagWeights, setCustomBagWeights] = useState<Record<string, number>>({});
+  const [showPrintModal, setShowPrintModal] = useState(false);
+
+  // Store Data
   const passengers = useAirportStore((state) => state.passengers);
   const flights = useAirportStore((state) => state.flights);
   const checkInPassenger = useAirportStore((state) => state.checkInPassenger);
   const updatePassengerDetails = useAirportStore((state) => state.updatePassengerDetails);
 
-  const foundPassenger = searchedPnr 
-    ? passengers.find(p => p.pnr === searchedPnr) 
-    : null;
+  // Derived Data
+  const foundPassenger = selectedPnr ? passengers.find(p => p.pnr === selectedPnr) : null;
   
-  const foundFlight = foundPassenger 
-    ? flights.find(f => f.id === foundPassenger.flightId) 
-    : null;
+  // Find all flight segments for this passenger (same PNR)
+  const passengerSegments = selectedPnr 
+    ? passengers.filter(p => p.pnr === selectedPnr)
+    : [];
+    
+  // Sort segments by flight number for now (ideal would be by time, but need full flight objects)
+  const sortedSegments = passengerSegments.map(p => {
+     const f = flights.find(flight => flight.id === p.flightId);
+     return { passenger: p, flight: f };
+  }).sort((a, b) => (a.flight?.std || '').localeCompare(b.flight?.std || ''));
 
-  // Get all occupied seats for this flight
+  const foundFlight = foundPassenger ? flights.find(f => f.id === foundPassenger.flightId) : null;
+  
+  // Helper to format seat map
   const occupiedSeats = foundFlight 
     ? passengers.filter(p => p.flightId === foundFlight.id).map(p => p.seat)
     : [];
+    
+  const handleUpgrade = () => {
+     if (!foundPassenger) return;
+     updatePassengerDetails(foundPassenger.pnr, { seat: '1A' }); // Simplistic upgrade logic
+     alert(`Passenger upgraded to 1A`);
+  };
 
-  const potentialLinks = foundPassenger 
-     ? passengers.filter(p => p.lastName === foundPassenger.lastName && p.id !== foundPassenger.id)
-     : [];
+  const handleDowngrade = () => {
+     if (!foundPassenger) return;
+     updatePassengerDetails(foundPassenger.pnr, { seat: '15A' }); // Simplistic downgrade logic
+     alert(`Passenger downgraded to 15A`);
+  };
+  
+  const handlePrint = () => {
+      if (foundPassenger) {
+          setShowPrintModal(true);
+      }
+  };
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    const term = searchTerm.toUpperCase().trim();
+  const handleBaggage = () => {
+      if (foundPassenger) {
+          setCurrentScreen('BAGGAGE');
+      }
+  };
+  
+  const handleRestart = () => {
+      setCurrentScreen('IDENTIFICATION');
+      setSelectedPnr(null);
+      setIdentName('');
+      setIdentPnr('');
+      setIdentFlight('');
+      setBagPcs('0');
+      setBagKg('0');
+  };
+  
+  const handleBack = () => {
+      if (currentScreen === 'SEAT_MAP' || currentScreen === 'BAGGAGE') {
+          setCurrentScreen('ACCEPTANCE');
+      } else if (currentScreen === 'ACCEPTANCE') {
+          handleRestart();
+      }
+  };
+
+  const handleFqtv = () => {
+      setShowFqtvModal(true);
+  };
+
+  const handleIdentify = () => {
+    const term = (identPnr || identName).toUpperCase();
     const match = passengers.find(p => p.pnr === term || p.lastName === term);
+    
     if (match) {
-      setSearchedPnr(match.pnr);
-      setActiveTab('DETAILS');
+      setSelectedPnr(match.pnr);
+      setBagPcs(match.bagCount.toString());
+      setBagKg((match.bagCount * 23).toString());
+      setCurrentScreen('ACCEPTANCE');
     } else {
-      setSearchedPnr(null);
+      alert('PASSENGER NOT FOUND');
     }
   };
 
-  const simulatePassportScan = () => {
-     if (!foundPassenger) return;
-     const countries = ['GBR', 'USA', 'DEU', 'FRA', 'ITA', 'ESP'];
-     const randomCountry = countries[Math.floor(Math.random() * countries.length)];
-     const randomNum = Math.floor(Math.random() * 1000000000).toString();
-     
-     updatePassengerDetails(foundPassenger.pnr, {
-        passportNumber: randomNum,
-        nationality: randomCountry,
-        expiryDate: '2030-01-01'
-     });
+  const handleAccept = () => {
+    if (foundPassenger && foundPassenger.status === 'BOOKED') {
+      checkInPassenger(foundPassenger.pnr);
+      updatePassengerDetails(foundPassenger.pnr, { 
+        bagCount: parseInt(bagPcs), 
+        hasBags: parseInt(bagPcs) > 0 
+      });
+      alert('PASSENGER ACCEPTED');
+      setCurrentScreen('IDENTIFICATION');
+      setIdentName('');
+      setIdentPnr('');
+      setSelectedPnr(null);
+    }
+  };
+  
+  const handleSeatChange = (newSeat: string) => {
+      if (foundPassenger) {
+          updatePassengerDetails(foundPassenger.pnr, { seat: newSeat });
+          setCurrentScreen('ACCEPTANCE');
+      }
+  };
+
+  // Simulate document swipe
+  const swipeDocument = () => {
+    if (foundPassenger) {
+       const countries = ['GBR', 'USA', 'DEU', 'FRA', 'ITA', 'ESP'];
+       const randomCountry = countries[Math.floor(Math.random() * countries.length)];
+       const randomNum = Math.floor(Math.random() * 1000000000).toString();
+       updatePassengerDetails(foundPassenger.pnr, {
+          passportNumber: randomNum,
+          nationality: randomCountry,
+          expiryDate: '2030-01-01'
+       });
+    }
   };
 
   return (
-    <div className="h-full w-full bg-blue-50 text-slate-900 p-6 flex flex-col">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6 border-b pb-4 border-blue-200">
-        <div>
-          <h1 className="text-3xl font-bold text-blue-800">Check-in Agent</h1>
-          <div className="text-sm text-blue-600 mt-1">Terminal 1 | Desk 14 | {new Date().toLocaleDateString()}</div>
-        </div>
-        <div className="bg-blue-100 px-4 py-2 rounded-full text-blue-800 font-bold border border-blue-200 shadow-sm">
-           Active Agent: T. SLAKOTKO
-        </div>
-      </div>
+    <div className="h-full w-full bg-[#FDFBF7] text-xs font-sans flex flex-col select-none text-gray-800">
       
-      <div className="grid grid-cols-12 gap-6 flex-1 overflow-hidden">
-        
-        {/* Left Panel (Search & Info) */}
-        <div className="col-span-4 flex flex-col gap-6">
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-blue-100">
-            <h3 className="text-lg font-semibold mb-4 text-gray-700">Passenger Lookup</h3>
-            <form onSubmit={handleSearch} className="flex flex-col gap-3">
-              <div className="relative">
-                <Search className="absolute left-4 top-3.5 text-gray-400" size={20} />
-                <input 
-                  type="text" 
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="PNR or LAST NAME" 
-                  className="w-full pl-12 p-3 border-2 border-gray-200 rounded-lg text-lg outline-none focus:border-blue-500 transition-colors uppercase font-mono placeholder:normal-case placeholder:font-sans"
-                  autoFocus
-                />
-              </div>
-              <button 
-                type="submit"
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg font-bold shadow-md transition-colors"
-              >
-                SEARCH
-              </button>
-            </form>
-          </div>
+      {/* Top Tab Bar */}
+      <div className="bg-[#EBE9E3] border-b border-[#A0A0A0] h-8 flex items-end px-2 pt-1 shadow-sm">
+        <Tab 
+          label="Customer Identification" 
+          active={currentScreen === 'IDENTIFICATION'} 
+          onClick={() => setCurrentScreen('IDENTIFICATION')} 
+          first
+        />
+        <Tab 
+          label="Customer Selection" 
+          active={currentScreen === 'SELECTION'} 
+          onClick={() => setCurrentScreen('SELECTION')} 
+        />
+        <Tab 
+          label="Customer Acceptance" 
+          active={currentScreen === 'ACCEPTANCE'} 
+          onClick={() => setCurrentScreen('ACCEPTANCE')} 
+        />
+        <Tab 
+          label="Acceptance Information" 
+          active={false} 
+          onClick={() => {}} 
+        />
+        <Tab 
+          label="Baggage" 
+          active={currentScreen === 'BAGGAGE'} 
+          onClick={() => setCurrentScreen('BAGGAGE')} 
+        />
+        <Tab 
+          label="Seat Change" 
+          active={currentScreen === 'SEAT_MAP'} 
+          onClick={() => setCurrentScreen('SEAT_MAP')} 
+        />
+      </div>
 
-          {foundFlight && (
-             <div className="bg-white p-6 rounded-xl shadow-sm border border-blue-100 flex-1">
-                <div className="text-xs text-gray-500 uppercase font-bold mb-2">Flight Information</div>
-                <div className="text-4xl font-bold text-blue-900">{foundFlight.flightNumber}</div>
-                <div className="text-lg text-gray-600 mb-4">{foundFlight.origin} ➔ {foundFlight.destination}</div>
-                
-                <div className="space-y-3 text-sm">
-                   <div className="flex justify-between border-b pb-2">
-                     <span className="text-gray-500">STD</span>
-                     <span className="font-mono font-bold">{foundFlight.std}</span>
-                   </div>
-                   <div className="flex justify-between border-b pb-2">
-                     <span className="text-gray-500">Gate</span>
-                     <span className="font-mono font-bold bg-yellow-100 px-2 rounded">{foundFlight.gate}</span>
-                   </div>
-                   <div className="flex justify-between border-b pb-2">
-                     <span className="text-gray-500">Aircraft</span>
-                     <span className="font-mono font-bold">{foundFlight.aircraft}</span>
-                   </div>
-                </div>
-             </div>
-          )}
+      {/* Flight Info Bar */}
+      <HeaderInfo flight={foundFlight} gate={foundFlight?.gate} />
+
+      {/* Main Content Area */}
+      <div className="flex-1 p-2 overflow-hidden flex relative">
+      
+        {/* Left Sidebar Menu */}
+        <div className="w-48 bg-[#F0F0F0] border-r border-[#A0A0A0] flex flex-col text-[11px] select-none mr-2">
+            <div className="bg-gradient-to-b from-[#EBE9E3] to-[#D4D0C8] px-2 py-1 font-bold border-b border-white text-gray-700">Shortcuts</div>
+            <div className="p-2 space-y-1">
+                <div className="flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer"><span>Create Record</span><span className="text-gray-400">F8</span></div>
+            </div>
+            
+            <div className="bg-gradient-to-b from-[#EBE9E3] to-[#D4D0C8] px-2 py-1 font-bold border-b border-white border-t border-[#A0A0A0] text-gray-700">Menus</div>
+            <div className="p-2 space-y-1">
+                <button disabled={!foundPassenger} onClick={handleUpgrade} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Upgrade Class</span><span className="text-gray-400">SF4</span></button>
+                <button disabled={!foundPassenger} onClick={handleDowngrade} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Downgrade Class</span></button>
+                <button disabled={!foundPassenger} onClick={handleFqtv} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Add FQTV</span></button>
+                <button disabled={!foundPassenger} onClick={handleBaggage} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Baggage</span></button>
+                <button disabled={!foundPassenger} onClick={handlePrint} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Print BP/Tags</span><span className="text-gray-400">P</span></button>
+            </div>
+            
+            <div className="bg-gradient-to-b from-[#EBE9E3] to-[#D4D0C8] px-2 py-1 font-bold border-b border-white border-t border-[#A0A0A0] text-gray-700">System</div>
+            <div className="p-2 space-y-1">
+                <button onClick={handleRestart} className="w-full flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer"><span className="text-blue-800">Restart</span><span className="text-orange-400">SF12</span></button>
+                <button onClick={handleBack} className="w-full flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer"><span className="text-gray-700">Back</span><span className="text-gray-400">ESC</span></button>
+            </div>
         </div>
         
-        {/* Right Panel (Passenger Tabs) */}
-        <div className="col-span-8 flex flex-col h-full">
-          {foundPassenger ? (
-            <div className="bg-white rounded-xl shadow-md border border-blue-100 flex-1 flex flex-col overflow-hidden">
-              <div className="bg-blue-600 p-6 text-white flex justify-between items-center shrink-0">
-                <div>
-                  <h2 className="text-2xl font-bold tracking-wider">{foundPassenger.lastName}, {foundPassenger.firstName}</h2>
-                  <div className="opacity-80 text-sm mt-1">
-                    Seat: {foundPassenger.seat} | Status: {foundPassenger.status}
-                    {foundPassenger.passengerType === 'STAFF_DUTY' && <span className="ml-2 px-2 py-0.5 bg-yellow-500 text-yellow-900 rounded text-xs font-bold">STAFF DUTY</span>}
-                    {foundPassenger.passengerType === 'STAFF_SBY' && <span className="ml-2 px-2 py-0.5 bg-orange-500 text-orange-900 rounded text-xs font-bold">STAFF STANDBY</span>}
-                    {foundPassenger.staffId && <span className="ml-2 text-xs opacity-70">ID: {foundPassenger.staffId}</span>}
-                  </div>
-                </div>
-                <span className="font-mono bg-blue-800 px-4 py-2 rounded text-xl font-bold tracking-widest">{foundPassenger.pnr}</span>
+        {/* Right Content */}
+        <div className="flex-1 flex flex-col overflow-hidden relative">
+        
+        {/* Screen: IDENTIFICATION */}
+        {currentScreen === 'IDENTIFICATION' && (
+          <div className="flex flex-col gap-4 h-full">
+            
+            {/* Identify Customer By Panel */}
+            <div className="border border-[#7F9DB9] rounded-t-md bg-[#FFFBE6]">
+              <div className="bg-gradient-to-r from-[#4A6984] to-[#2B4E71] px-2 py-1 text-white font-bold flex justify-between items-center">
+                <span>Customer Identification</span>
+                <div className="w-4 h-4 bg-[#FF9900] rounded-full border border-white shadow-inner" />
               </div>
               
-              <div className="flex border-b border-gray-200 bg-gray-50 overflow-x-auto">
-                {[
-                  { id: 'DETAILS', icon: User, label: 'DETAILS' },
-                  { id: 'SEAT', icon: MapPin, label: 'SEAT MAP' },
-                  { id: 'DOCS', icon: CreditCard, label: 'DOCS' },
-                  { id: 'BAGS', icon: Luggage, label: 'BAGGAGE' },
-                  { id: 'LINK', icon: LinkIcon, label: 'LINK' }
-                ].map(tab => (
-                  <button 
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id as any)}
-                    className={clsx(
-                      "px-6 py-3 font-bold text-sm flex items-center gap-2 whitespace-nowrap", 
-                      activeTab === tab.id ? "bg-white text-blue-600 border-t-2 border-blue-600" : "text-gray-500 hover:bg-gray-100"
-                    )}
-                  >
-                    <tab.icon size={16} /> {tab.label}
-                  </button>
-                ))}
+              <div className="p-4 space-y-4">
+                 <div className="flex items-center gap-2 text-blue-800 bg-blue-50 p-2 border border-blue-200 rounded">
+                    <div className="bg-blue-600 text-white rounded-full w-4 h-4 flex items-center justify-center font-bold">i</div>
+                    Swipe a document or enter details. All fields are optional.
+                 </div>
+
+                 <div className="grid grid-cols-12 gap-4">
+                    <div className="col-span-2 text-right pt-1 font-bold text-gray-600">Identify Customer by</div>
+                    <div className="col-span-10 space-y-2">
+                        <div className="flex gap-2 items-center">
+                            <label className="w-32 text-right font-bold text-gray-800">Customer Name(s):</label>
+                            <LegacyInput value={identName} onChange={(e: any) => setIdentName(e.target.value)} width="w-64" />
+                            <div className="text-gray-600 text-[10px] ml-2 font-bold">Or</div>
+                        </div>
+                        <div className="flex gap-2 items-center">
+                            <label className="w-32 text-right font-bold text-gray-800">Seat/Security Nbr:</label>
+                            <LegacyInput width="w-32" />
+                            <label className="ml-4 font-bold text-gray-800">FQTV Number:</label>
+                            <LegacyInput width="w-32" />
+                        </div>
+                        <div className="flex gap-2 items-center">
+                            <label className="w-32 text-right font-bold text-gray-800">PNR Record:</label>
+                            <LegacyInput value={identPnr} onChange={(e: any) => setIdentPnr(e.target.value.toUpperCase())} width="w-32" />
+                        </div>
+                    </div>
+                 </div>
+
+                 <div className="h-px bg-[#D4D0C8] my-2" />
+
+                 <div className="grid grid-cols-12 gap-4">
+                    <div className="col-span-2 text-right pt-1 font-bold text-gray-600">Flight</div>
+                    <div className="col-span-10 flex gap-4 items-center">
+                        <label className="font-bold text-gray-800">Flight Number:</label>
+                        <div className="flex gap-1">
+                            <LegacyInput value={identFlightPrefix} onChange={(e: any) => setIdentFlightPrefix(e.target.value.toUpperCase())} width="w-12" />
+                            <LegacyInput value={identFlight} onChange={(e: any) => setIdentFlight(e.target.value)} width="w-20" />
+                        </div>
+                        <label className="font-bold text-gray-800">Date:</label>
+                        <LegacyInput value={new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase()} width="w-24" />
+                        <label className="font-bold text-gray-800">From:</label>
+                        <LegacyInput value="RIX" width="w-16" />
+                        <label className="font-bold text-gray-800">To:</label>
+                        <LegacyInput width="w-16" />
+                    </div>
+                 </div>
               </div>
-
-              <div className="p-8 flex-1 overflow-y-auto bg-gray-50/50">
-                {activeTab === 'DETAILS' && (
-                   <div className="space-y-6">
-                      {/* Details Content (Same as before) */}
-                      <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
-                         <h3 className="text-gray-500 text-xs uppercase font-bold mb-4">Itinerary Summary</h3>
-                         <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                               <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
-                                  <Plane size={24} />
-                               </div>
-                               <div>
-                                  <div className="font-bold text-lg">{foundFlight?.origin} ➔ {foundFlight?.destination}</div>
-                                  <div className="text-gray-500 text-sm">{foundFlight?.flightNumber} • {foundFlight?.std}</div>
-                               </div>
-                            </div>
-                            <div className="text-right">
-                               <div className="text-2xl font-bold font-mono">{foundPassenger.seat}</div>
-                               <div className="text-xs text-gray-400 uppercase">Seat Assignment</div>
-                            </div>
-                         </div>
-                      </div>
-                   </div>
-                )}
-
-                {activeTab === 'SEAT' && (
-                   <div className="flex justify-center">
-                      <SeatMap 
-                         occupiedSeats={occupiedSeats}
-                         currentSeat={foundPassenger.seat}
-                         aircraftType={foundFlight?.aircraft || 'STD'}
-                         onSelectSeat={(seat) => updatePassengerDetails(foundPassenger.pnr, { seat })}
-                      />
-                   </div>
-                )}
-
-                {/* Docs, Bags, Link tabs content reused from previous step... */}
-                {activeTab === 'DOCS' && (
-                   <div className="space-y-6">
-                      <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
-                         <div className="flex justify-between mb-4">
-                            <h3 className="text-gray-500 text-xs uppercase font-bold">Travel Documents</h3>
-                            <button 
-                               onClick={simulatePassportScan}
-                               className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200"
-                            >
-                               SIMULATE SCAN
-                            </button>
-                         </div>
-                         <div className="grid grid-cols-2 gap-4">
-                            <div>
-                               <label className="block text-xs text-gray-400 mb-1">Passport Number</label>
-                               <input 
-                                  type="text" 
-                                  value={foundPassenger.passportNumber || ''} 
-                                  onChange={(e) => updatePassengerDetails(foundPassenger.pnr, { passportNumber: e.target.value })}
-                                  className="w-full p-2 border rounded font-mono bg-gray-50" 
-                               />
-                            </div>
-                            <div>
-                               <label className="block text-xs text-gray-400 mb-1">Nationality</label>
-                               <input 
-                                  type="text" 
-                                  value={foundPassenger.nationality || ''} 
-                                  onChange={(e) => updatePassengerDetails(foundPassenger.pnr, { nationality: e.target.value })}
-                                  className="w-full p-2 border rounded font-mono bg-gray-50" 
-                               />
-                            </div>
-                         </div>
-                      </div>
-                   </div>
-                )}
-
-                {activeTab === 'BAGS' && (
-                   <div className="space-y-6">
-                      <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
-                         <div className="flex items-center gap-8 mb-8">
-                            <div className="w-24 h-24 bg-orange-50 rounded-full flex items-center justify-center border-2 border-orange-100">
-                               <Luggage size={40} className="text-orange-500" />
-                            </div>
-                            <div>
-                               <div className="text-4xl font-bold text-gray-800">{foundPassenger.bagCount} <span className="text-lg text-gray-400 font-normal">PCS</span></div>
-                               <div className="text-sm text-gray-500">Total Weight: {foundPassenger.bagCount * 23} KG (Est)</div>
-                            </div>
-                            <div className="flex gap-2 ml-auto">
-                               <button onClick={() => updatePassengerDetails(foundPassenger.pnr, { bagCount: Math.max(0, foundPassenger.bagCount - 1) })} className="w-10 h-10 rounded border hover:bg-gray-50 flex items-center justify-center font-bold text-xl">-</button>
-                               <button onClick={() => updatePassengerDetails(foundPassenger.pnr, { bagCount: foundPassenger.bagCount + 1, hasBags: true })} className="w-10 h-10 rounded bg-blue-600 text-white hover:bg-blue-700 flex items-center justify-center font-bold text-xl">+</button>
-                            </div>
-                         </div>
-                      </div>
-                   </div>
-                )}
-
-                {activeTab === 'LINK' && (
-                   <div className="space-y-6">
-                      <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
-                         <h3 className="text-gray-500 text-xs uppercase font-bold mb-4">Linked Flights / Passengers</h3>
-                         {potentialLinks.length > 0 ? (
-                            <div className="space-y-2">
-                               {potentialLinks.map(p => (
-                                 <div key={p.id} className="p-3 border rounded flex justify-between items-center hover:bg-gray-50">
-                                    <div className="font-bold">{p.firstName} {p.lastName}</div>
-                                    <div className="font-mono text-sm">{p.pnr}</div>
-                                 </div>
-                               ))}
-                            </div>
-                         ) : (
-                            <div className="text-gray-400 text-center py-8 text-sm italic">No links found.</div>
-                         )}
-                      </div>
-                   </div>
-                )}
-              </div>
-
-              <div className="p-6 bg-white border-t border-gray-200">
-                 {foundPassenger.status === 'BOOKED' ? (
-                   <button onClick={() => checkInPassenger(foundPassenger.pnr)} className="w-full bg-green-500 hover:bg-green-600 text-white py-4 rounded-lg font-bold shadow-md transition-transform active:scale-[0.99] flex items-center justify-center gap-3 text-lg"><Check size={24} /> CONFIRM CHECK-IN</button>
-                 ) : (
-                   <div className="w-full bg-gray-100 text-gray-400 py-4 rounded-lg font-bold flex items-center justify-center gap-3 text-lg cursor-not-allowed"><Check size={24} /> ALREADY CHECKED-IN</div>
-                 )}
+              
+              <div className="bg-[#F0F0F0] p-2 border-t border-[#7F9DB9] flex justify-end gap-2">
+                 <LegacyButton>Basic Options [F2]</LegacyButton>
+                 <LegacyButton primary onClick={handleIdentify}>Identify</LegacyButton>
               </div>
             </div>
-          ) : searchedPnr ? (
-             <div className="flex-1 flex items-center justify-center flex-col gap-4 opacity-50">
-                <AlertCircle size={64} className="text-red-400" />
-                <div className="text-2xl text-red-400 font-bold">PASSENGER NOT FOUND</div>
+
+            <div className="flex-1 bg-white border border-[#7F9DB9] p-4 flex items-center justify-center text-gray-300">
+                NO ACTIVE SESSION
+            </div>
+          </div>
+        )}
+
+        {/* Screen: ACCEPTANCE (Combined Selection & Acceptance for simplicity) */}
+        {currentScreen === 'ACCEPTANCE' && foundPassenger && (
+          <div className="flex flex-col h-full gap-2">
+             
+             {/* Passenger List Table */}
+             <div className="flex-1 border border-[#7F9DB9] bg-white overflow-auto relative">
+                <table className="w-full border-collapse text-[11px]">
+                   <thead className="bg-[#EBE9E3] sticky top-0 z-10">
+                      <tr className="border-b border-[#A0A0A0]">
+                         <th className="text-left px-2 py-1 border-r border-gray-300">Customer</th>
+                         <th className="text-left px-2 py-1 border-r border-gray-300">Flight</th>
+                         <th className="text-left px-2 py-1 border-r border-gray-300">Route</th>
+                         <th className="text-left px-2 py-1 border-r border-gray-300">Tkt</th>
+                         <th className="text-left px-2 py-1 border-r border-gray-300">Cls</th>
+                         <th className="text-left px-2 py-1 border-r border-gray-300">Seat</th>
+                         <th className="text-center px-2 py-1 border-r border-gray-300 w-8">Ck</th>
+                         <th className="text-center px-2 py-1 w-8">Bag</th>
+                      </tr>
+                   </thead>
+                   <tbody>
+                      {sortedSegments.map((seg, index) => (
+                        <tr key={seg.passenger.id} className="bg-[#FFF2CC] border-b border-[#D4D0C8]">
+                           <td className="px-2 py-1 font-bold whitespace-nowrap">
+                              {index === 0 ? (
+                                <div className="flex items-center gap-2">
+                                  <span>{seg.passenger.lastName} {seg.passenger.firstName} {seg.passenger.title || 'MR'}</span>
+                                  {seg.passenger.passengerType === 'STAFF_DUTY' && (
+                                    <span className="bg-yellow-500 text-yellow-900 px-1.5 py-0.5 rounded text-[9px] font-bold border border-yellow-600">DUTY</span>
+                                  )}
+                                  {seg.passenger.passengerType === 'STAFF_SBY' && (
+                                    <span className="bg-orange-500 text-orange-900 px-1.5 py-0.5 rounded text-[9px] font-bold border border-orange-600">SBY</span>
+                                  )}
+                                </div>
+                              ) : ''}
+                           </td>
+                           <td className="px-2 py-1 flex items-center gap-1">
+                              <Plane size={10} className="text-gray-500 transform rotate-45" />
+                              {seg.flight?.flightNumber}
+                           </td>
+                           <td className="px-2 py-1">
+                              {seg.flight ? `${seg.flight.origin}-${seg.flight.destination}` : '---'}
+                           </td>
+                           <td className="px-2 py-1">
+                              <div className="w-4 h-4 rounded-full border border-blue-400 text-blue-600 flex items-center justify-center text-[8px] font-bold bg-white">e</div>
+                           </td>
+                           <td className="px-2 py-1">Y</td>
+                           <td className="px-2 py-1 font-bold text-blue-800">{seg.passenger.seat}</td>
+                           <td className="px-2 py-1 text-center">
+                              {seg.passenger.status === 'CHECKED_IN' || seg.passenger.status === 'BOARDED' ? (
+                                <Check size={14} className="text-green-600 mx-auto font-bold" strokeWidth={4} />
+                              ) : (
+                                <div className="w-3 h-3 border border-gray-400 mx-auto" />
+                              )}
+                           </td>
+                           <td className="px-2 py-1 text-center">
+                              {seg.passenger.bagCount > 0 && (
+                                <div className="relative inline-block">
+                                   <Luggage size={14} className="text-gray-600" />
+                                   <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[8px] px-0.5 rounded-full leading-none">
+                                     {seg.passenger.bagCount}
+                                   </span>
+                                </div>
+                              )}
+                           </td>
+                        </tr>
+                      ))}
+                   </tbody>
+                </table>
              </div>
-          ) : (
-            <div className="flex-1 flex items-center justify-center flex-col gap-4 opacity-30">
-              <User size={64} />
-              <div className="text-xl font-bold">WAITING FOR AGENT INPUT</div>
-            </div>
-          )}
+
+             {/* Action Panel */}
+             <div className="h-48 bg-[#FFFBE6] border border-[#7F9DB9] p-2 flex flex-col justify-between">
+                
+                <div className="flex items-center gap-2 bg-blue-50 p-1 border border-blue-200 mb-2">
+                    <div className="bg-blue-600 text-white rounded-full w-4 h-4 flex items-center justify-center font-bold text-[10px]">i</div>
+                    <span className="text-blue-800">Enter bag details and seat preference (if required).</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-8 px-4">
+                    <div className="border-t border-[#D4D0C8] pt-2 relative">
+                        <span className="absolute -top-2.5 left-0 bg-[#FFFBE6] px-1 font-bold text-gray-600">Baggage</span>
+                        <div className="flex items-center gap-2 mt-2">
+                            <label>Hold Baggage:</label>
+                            <input 
+                              type="number" 
+                              value={bagPcs} 
+                              onChange={(e) => setBagPcs(e.target.value)}
+                              className="w-8 border border-[#7F9DB9] px-1 text-right" 
+                            />
+                            <span>/</span>
+                            <input 
+                              type="number" 
+                              value={bagKg} 
+                              onChange={(e) => setBagKg(e.target.value)}
+                              className="w-10 border border-[#7F9DB9] px-1 text-right" 
+                            />
+                            <span>KG</span>
+                        </div>
+                    </div>
+
+                    <div className="border-t border-[#D4D0C8] pt-2 relative">
+                        <span className="absolute -top-2.5 left-0 bg-[#FFFBE6] px-1 font-bold text-gray-600">Seating</span>
+                        <div className="flex items-center gap-2 mt-2">
+                            <label>Seat Preference:</label>
+                            <LegacyInput width="w-24" />
+                            <button 
+                                onClick={() => setCurrentScreen('SEAT_MAP')}
+                                className="bg-[#E0E0E0] border border-gray-400 px-2 rounded text-[10px] hover:bg-white"
+                            >
+                                Map
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                {/* Document Info (Simulated) */}
+                <div className="mt-2 border p-2 bg-white text-[10px] font-mono h-16 overflow-y-auto">
+                    {foundPassenger.passportNumber ? (
+                        <div className="text-green-700">
+                            DOCS OK: {foundPassenger.passportNumber} ({foundPassenger.nationality}) EXP:{foundPassenger.expiryDate}
+                        </div>
+                    ) : (
+                        <div className="text-red-500 flex justify-between items-center">
+                            <span>MISSING TRAVEL DOCUMENTS</span>
+                            <button onClick={swipeDocument} className="underline text-blue-600 hover:text-blue-800">
+                                [Simulate Swipe]
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex justify-end gap-2 mt-2">
+                    <LegacyButton>Advanced Options [F2]</LegacyButton>
+                    <LegacyButton onClick={() => setCurrentScreen('IDENTIFICATION')}>Back</LegacyButton>
+                    <LegacyButton primary onClick={handleAccept}>
+                        {foundPassenger.status === 'CHECKED_IN' ? 'Modify' : 'Accept'}
+                    </LegacyButton>
+                </div>
+             </div>
+          </div>
+        )}
+
+        {/* Screen: BAGGAGE */}
+        {currentScreen === 'BAGGAGE' && foundPassenger && (
+          <div className="flex flex-col h-full gap-2">
+             {/* Bag List Table */}
+             <div className="flex-1 border border-[#7F9DB9] bg-white overflow-auto relative">
+                <table className="w-full border-collapse text-[11px]">
+                   <thead className="bg-[#EBE9E3] sticky top-0 z-10">
+                      <tr className="border-b border-[#A0A0A0]">
+                         <th className="text-left px-2 py-1 border-r border-gray-300">Tag Number</th>
+                         <th className="text-left px-2 py-1 border-r border-gray-300">Type</th>
+                         <th className="text-left px-2 py-1 border-r border-gray-300">Weight</th>
+                         <th className="text-left px-2 py-1 border-r border-gray-300">Status</th>
+                         <th className="text-left px-2 py-1 border-r border-gray-300">Destination</th>
+                         <th className="text-right px-2 py-1 w-16">Action</th>
+                      </tr>
+                   </thead>
+                   <tbody>
+                      {Array.from({ length: foundPassenger.bagCount }).map((_, i) => {
+                        const weightKey = `${foundPassenger.pnr}-${i}`;
+                        const currentWeight = customBagWeights[weightKey] || 23;
+                        
+                        return (
+                        <tr key={i} className="bg-white border-b border-[#D4D0C8]">
+                           <td className="px-2 py-1 font-mono">00BT{foundPassenger.pnr}{i + 1}</td>
+                           <td className="px-2 py-1">Check-in</td>
+                           <td className="px-2 py-1 font-bold text-blue-800">
+                              {editingBagIndex === i ? (
+                                <div className="flex items-center gap-1">
+                                   <input 
+                                     type="number" 
+                                     value={editWeight} 
+                                     onChange={(e) => setEditWeight(e.target.value)}
+                                     className="w-12 border border-blue-500 px-1 text-right"
+                                     autoFocus
+                                   />
+                                   <span className="text-xs">KG</span>
+                                </div>
+                              ) : (
+                                <span>{currentWeight} KG</span>
+                              )}
+                           </td>
+                           <td className="px-2 py-1 text-green-600">ACCEPTED</td>
+                           <td className="px-2 py-1 font-bold">{foundFlight?.destination}</td>
+                           <td className="px-2 py-1 text-right">
+                              {editingBagIndex === i ? (
+                                <LegacyButton primary onClick={() => {
+                                   setCustomBagWeights(prev => ({ ...prev, [weightKey]: parseFloat(editWeight) || 0 }));
+                                   setEditingBagIndex(null);
+                                }}>Save</LegacyButton>
+                              ) : (
+                                <LegacyButton onClick={() => {
+                                   setEditingBagIndex(i);
+                                   setEditWeight(currentWeight.toString());
+                                }}>Edit</LegacyButton>
+                              )}
+                           </td>
+                        </tr>
+                      )})}
+                      {foundPassenger.bagCount === 0 && (
+                         <tr>
+                            <td colSpan={6} className="text-center py-8 text-gray-400 italic">No bags checked in</td>
+                         </tr>
+                      )}
+                   </tbody>
+                </table>
+             </div>
+
+             {/* Action Panel */}
+             <div className="bg-[#FFFBE6] border border-[#7F9DB9] p-2">
+                <div className="flex items-center gap-2 mb-4">
+                    <span className="font-bold text-gray-700">Total Bags: {foundPassenger.bagCount}</span>
+                    <span className="mx-2 text-gray-400">|</span>
+                    <span className="font-bold text-gray-700">
+                       Total Weight: {Array.from({ length: foundPassenger.bagCount }).reduce((acc: number, _, i) => acc + (customBagWeights[`${foundPassenger.pnr}-${i}`] || 23), 0)} KG
+                    </span>
+                </div>
+                
+                <div className="flex gap-2">
+                    <LegacyButton primary onClick={() => updatePassengerDetails(foundPassenger.pnr, { bagCount: foundPassenger.bagCount + 1 })}>
+                       + Add Bag (23KG)
+                    </LegacyButton>
+                    <LegacyButton onClick={() => updatePassengerDetails(foundPassenger.pnr, { bagCount: Math.max(0, foundPassenger.bagCount - 1) })} disabled={foundPassenger.bagCount === 0}>
+                       - Remove Bag
+                    </LegacyButton>
+                    <div className="w-px bg-gray-300 mx-2" />
+                    <LegacyButton onClick={() => setShowPrintModal(true)}>Print Tags</LegacyButton>
+                </div>
+             </div>
+          </div>
+        )}
+
+        {/* Screen: SEAT MAP */}
+        {currentScreen === 'SEAT_MAP' && foundPassenger && (
+          <div className="flex flex-col h-full">
+             <div className="bg-[#FFFBE6] border border-[#7F9DB9] mb-2 p-1">
+                 <span className="font-bold text-blue-800 mr-4">Select Seats:</span>
+                 <input value={foundPassenger.seat} readOnly className="bg-[#FFF2CC] border border-[#7F9DB9] w-12 text-center font-bold" />
+                 <span className="ml-4 text-gray-600">( {foundFlight?.origin} ➔ {foundFlight?.destination} )</span>
+             </div>
+
+             <div className="flex-1 bg-[#FEFEFE] border border-[#7F9DB9] relative overflow-auto p-8 flex justify-center">
+                 {/* Visual Plane Body */}
+                 <div className="relative bg-[#FFFBF7] border-l-4 border-r-4 border-gray-300 min-h-[500px] w-[400px] p-4">
+                    
+                    {/* Header / Cockpit area */}
+                    <div className="absolute top-0 left-0 right-0 h-16 border-b border-gray-300 flex items-center justify-center text-gray-300 text-4xl font-bold opacity-20">
+                        COCKPIT
+                    </div>
+
+                    <div className="mt-20 space-y-1">
+                       {Array.from({ length: 20 }).map((_, r) => {
+                          const row = r + 1;
+                          return (
+                            <div key={row} className="flex justify-between items-center gap-4">
+                                {/* Left Side A-C */}
+                                <div className="flex gap-1">
+                                   {['A','B','C'].map(col => {
+                                      const seatId = `${row}${col}`;
+                                      const isOccupied = occupiedSeats.includes(seatId) && seatId !== foundPassenger.seat;
+                                      const isSelected = seatId === foundPassenger.seat;
+                                      
+                                      return (
+                                        <button 
+                                          key={seatId}
+                                          disabled={isOccupied}
+                                          onClick={() => handleSeatChange(seatId)}
+                                          className={clsx(
+                                            "w-8 h-10 rounded-t-lg border border-gray-400 text-[10px] flex items-center justify-center font-bold shadow-sm transition-all",
+                                            isOccupied ? "bg-gray-300 text-gray-500 cursor-not-allowed" :
+                                            isSelected ? "bg-cyan-300 border-cyan-600 text-cyan-900 scale-110 z-10" :
+                                            "bg-white hover:bg-cyan-50 text-gray-600"
+                                          )}
+                                        >
+                                            {/* Seat Visual */}
+                                            <div className="w-6 h-8 border border-gray-300 rounded-t flex items-end justify-center pb-1">
+                                                {col}
+                                            </div>
+                                        </button>
+                                      );
+                                   })}
+                                </div>
+
+                                <div className="text-gray-300 font-mono font-bold w-6 text-center">{row}</div>
+
+                                {/* Right Side D-F */}
+                                <div className="flex gap-1">
+                                   {['D','E','F'].map(col => {
+                                      const seatId = `${row}${col}`;
+                                      const isOccupied = occupiedSeats.includes(seatId) && seatId !== foundPassenger.seat;
+                                      const isSelected = seatId === foundPassenger.seat;
+                                      
+                                      return (
+                                        <button 
+                                          key={seatId}
+                                          disabled={isOccupied}
+                                          onClick={() => handleSeatChange(seatId)}
+                                          className={clsx(
+                                            "w-8 h-10 rounded-t-lg border border-gray-400 text-[10px] flex items-center justify-center font-bold shadow-sm transition-all",
+                                            isOccupied ? "bg-gray-300 text-gray-500 cursor-not-allowed" :
+                                            isSelected ? "bg-cyan-300 border-cyan-600 text-cyan-900 scale-110 z-10" :
+                                            "bg-white hover:bg-cyan-50 text-gray-600"
+                                          )}
+                                        >
+                                            <div className="w-6 h-8 border border-gray-300 rounded-t flex items-end justify-center pb-1">
+                                                {col}
+                                            </div>
+                                        </button>
+                                      );
+                                   })}
+                                </div>
+                            </div>
+                          );
+                       })}
+                    </div>
+
+                 </div>
+             </div>
+
+             <div className="bg-[#F0F0F0] p-2 border border-[#7F9DB9] mt-2 flex justify-between items-center">
+                 <div className="text-[10px] text-blue-800 font-bold">
+                     Select seats to change from the seatmap and select a new vacant seat.
+                 </div>
+                 <div className="flex gap-2">
+                     <LegacyButton onClick={() => setCurrentScreen('ACCEPTANCE')}>Cancel</LegacyButton>
+                     <LegacyButton primary onClick={() => setCurrentScreen('ACCEPTANCE')}>Confirm Seat</LegacyButton>
+                 </div>
+             </div>
+          </div>
+        )}
         </div>
+
+        {/* FQTV Modal */}
+        {showFqtvModal && (
+          <div className="absolute inset-0 bg-black/20 flex items-center justify-center z-50">
+             <div className="bg-[#F0F0F0] border-2 border-white outline outline-1 outline-[#7F9DB9] w-80 shadow-xl">
+                <div className="bg-gradient-to-r from-[#4A6984] to-[#2B4E71] px-2 py-1 text-white font-bold flex justify-between items-center text-xs">
+                    <span>Frequent Traveler Card</span>
+                    <button onClick={() => setShowFqtvModal(false)} className="text-white hover:bg-red-500 w-4 h-4 flex items-center justify-center rounded">×</button>
+                </div>
+                <div className="p-4 space-y-2 text-xs">
+                    <div className="flex items-center gap-2">
+                        <label className="w-20 text-right">Airline:</label>
+                        <LegacyInput width="w-12" value="BT" />
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <label className="w-20 text-right">Number:</label>
+                        <LegacyInput width="w-32" placeholder="123456789" />
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <label className="w-20 text-right">Tier:</label>
+                        <LegacyInput width="w-20" placeholder="GOLD" />
+                    </div>
+                </div>
+                <div className="p-2 flex justify-end gap-2 border-t border-[#D4D0C8]">
+                    <LegacyButton onClick={() => setShowFqtvModal(false)}>Cancel</LegacyButton>
+                    <LegacyButton primary onClick={() => { alert('FQTV Added'); setShowFqtvModal(false); }}>Add</LegacyButton>
+                </div>
+             </div>
+          </div>
+        )}
+
+        {/* Print Modal */}
+        {showPrintModal && foundPassenger && foundFlight && (
+          <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50 p-8">
+             <div className="bg-[#F0F0F0] w-full max-w-4xl h-[80vh] flex flex-col shadow-2xl border-4 border-[#003C74] rounded">
+                {/* Modal Header */}
+                <div className="bg-gradient-to-r from-[#003C74] to-[#4A6984] text-white px-4 py-2 font-bold flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                        <Printer size={16} />
+                        <span>Print Manager - {foundPassenger.lastName}/{foundPassenger.firstName}</span>
+                    </div>
+                    <button onClick={() => setShowPrintModal(false)} className="text-white hover:bg-red-500 w-6 h-6 flex items-center justify-center rounded text-lg">×</button>
+                </div>
+                
+                {/* Toolbar */}
+                <div className="bg-[#EBE9E3] border-b border-[#A0A0A0] p-2 flex gap-2">
+                    <LegacyButton primary onClick={() => { alert('Sent to printer'); setShowPrintModal(false); }}>
+                        <Printer size={12} className="inline mr-1" /> Print All
+                    </LegacyButton>
+                    <div className="w-px bg-gray-400 mx-2" />
+                    <LegacyButton onClick={() => setShowPrintModal(false)}>Close</LegacyButton>
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 overflow-auto p-8 bg-gray-600 flex flex-col items-center gap-8">
+                    
+                    {/* Boarding Pass Section */}
+                    <div className="w-full max-w-3xl">
+                        <h3 className="text-white text-sm font-bold mb-2 uppercase tracking-wider flex items-center gap-2">
+                            <FileText size={14} /> Boarding Pass
+                        </h3>
+                        <BoardingPass passenger={foundPassenger} flight={foundFlight} />
+                    </div>
+
+                    {/* Bags Section */}
+                    {foundPassenger.bagCount > 0 && (
+                        <div className="w-full max-w-3xl">
+                            <h3 className="text-white text-sm font-bold mb-2 uppercase tracking-wider flex items-center gap-2">
+                                <Luggage size={14} /> Baggage Tags ({foundPassenger.bagCount})
+                            </h3>
+                            <div className="flex flex-wrap gap-4">
+                                {Array.from({ length: foundPassenger.bagCount }).map((_, i) => (
+                                    <BagTag 
+                                        key={i} 
+                                        passenger={foundPassenger} 
+                                        flight={foundFlight} 
+                                        bagIndex={i}
+                                        weight={customBagWeights[`${foundPassenger.pnr}-${i}`] || 23}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+             </div>
+          </div>
+        )}
+
+      </div>
+      
+      {/* Status Bar */}
+      <div className="bg-[#EBE9E3] border-t border-[#A0A0A0] h-6 flex items-center px-2 text-[10px] text-gray-600 gap-4 shadow-inner">
+         <span>Ready</span>
+         <div className="h-3 w-px bg-gray-400" />
+         <span>CAPS</span>
+         <div className="h-3 w-px bg-gray-400" />
+         <span>NUM</span>
+         <div className="ml-auto">Terminal 1 / Desk 14</div>
       </div>
     </div>
   );

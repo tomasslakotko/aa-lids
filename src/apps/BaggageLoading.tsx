@@ -6,7 +6,7 @@ import {
   Scale, Clipboard, Scan, ArrowLeft, Truck
 } from 'lucide-react';
 
-export const BaggageApp = () => {
+export const BaggageLoadingApp = () => {
   const [selectedFlightId, setSelectedFlightId] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'SCAN' | 'MANIF' | 'LOADSHEET'>('SCAN');
   const [scanInput, setScanInput] = useState('');
@@ -302,3 +302,4 @@ export const BaggageApp = () => {
     </div>
   );
 };
+

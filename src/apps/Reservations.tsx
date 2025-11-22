@@ -164,14 +164,22 @@ export const ReservationsApp = () => {
         // For connections, sell the first leg (main flight)
         const flightToSell = selected.flight;
         
-        setWipPnr(prev => ({ ...prev, segments: [...prev.segments, flightToSell] }));
+        // Add main flight
+        const newSegments = [...wipPnr.segments, flightToSell];
+        
+        // Add connecting flight if it exists
+        if (selected.type === 'CONNECTING' && selected.connection) {
+           newSegments.push(selected.connection);
+        }
+        
+        setWipPnr(prev => ({ ...prev, segments: newSegments }));
         
         addLog(' ');
         addLog(`1  ${flightToSell.flightNumber} ${classCode} 10NOV ${flightToSell.origin}${flightToSell.destination} HK1 ${flightToSell.std} ${flightToSell.etd} ${flightToSell.gate} E`);
         
         // If it's a connection, mention the connecting flight
         if (selected.type === 'CONNECTING' && selected.connection) {
-          addLog(`    CONNECTION: ${selected.connection.flightNumber} ${selected.connection.origin}${selected.connection.destination}`);
+          addLog(`2  ${selected.connection.flightNumber} ${classCode} 10NOV ${selected.connection.origin}${selected.connection.destination} HK1 ${selected.connection.std} ${selected.connection.etd} ${selected.connection.gate} E`);
         }
         
         addLog(' ');
@@ -714,21 +722,52 @@ export const ReservationsApp = () => {
     // --- RETRIEVE (RT) ---
     else if (cmd.startsWith('RT')) {
        const term = cmd.substring(2).trim();
-       const found = passengers.filter(p => p.pnr === term);
-       if (found.length > 0) {
-          addLog(`RP/RIX1A0988/RIX1A0988            AA/SU  ${new Date().toDateString()}`);
-          found.forEach((p, i) => {
+       const foundEntries = passengers.filter(p => p.pnr === term);
+       
+       if (foundEntries.length > 0) {
+          // Get Unique Passengers
+          const uniquePassengers = Array.from(new Set(foundEntries.map(p => p.firstName + '|' + p.lastName)))
+            .map(key => {
+               const [first, last] = key.split('|');
+               return foundEntries.find(p => p.firstName === first && p.lastName === last)!;
+            });
+
+          // Get Unique Flights (Segments)
+          const uniqueFlightIds = Array.from(new Set(foundEntries.map(p => p.flightId)));
+          const uniqueFlights = uniqueFlightIds
+            .map(fid => flights.find(f => f.id === fid))
+            .filter(f => f !== undefined) as Flight[];
+            
+          // Sort flights by departure time
+          uniqueFlights.sort((a, b) => a.std.localeCompare(b.std));
+
+          addLog(`RP/RIX1A0988/RIX1A0988            AA/SU  ${new Date().toDateString()}   ${term}`);
+          
+          let lineIdx = 1;
+          
+          // 1. Passenger List
+          uniquePassengers.forEach((p) => {
              const typeLabel = p.passengerType === 'STAFF_DUTY' ? ' [STAFF DUTY]' : p.passengerType === 'STAFF_SBY' ? ' [STAFF SBY]' : '';
-             addLog(`  ${i+1}.${p.lastName}/${p.firstName} MR${typeLabel}`);
+             addLog(`  ${lineIdx}.${p.lastName}/${p.firstName} MR${typeLabel}`);
              if (p.staffId) addLog(`     EMP ID: ${p.staffId}`);
+             lineIdx++;
           });
-          const f = flights.find(f => f.id === found[0].flightId);
-          if (f) {
-             const seatCode = found[0].passengerType === 'STAFF_SBY' ? 'SBY' : 'Y';
-             addLog(`  ${found.length + 1}  ${f.flightNumber} ${seatCode} ${f.std} ${f.origin}${f.destination} HK${found.length}       ${f.std} ${f.etd}   ${f.gate} E`);
-          }
-          addLog(`  ${found.length + 2} AP LON 020-7123-4567`);
-          addLog(`  ${found.length + 3} TK TL${new Date().getDate()}NOV/RIX1A0988`);
+          
+          // 2. Segment List
+          uniqueFlights.forEach((f) => {
+             // Calculate HK count based on unique passengers on this flight with this PNR
+             const paxCountOnFlight = uniquePassengers.length; 
+             // Note: simplified logic assuming all pax are on all segments for this PNR, 
+             // which matches the createBooking logic.
+             
+             const seatCode = foundEntries[0].passengerType === 'STAFF_SBY' ? 'SBY' : 'Y';
+             addLog(`  ${lineIdx}  ${f.flightNumber} ${seatCode} 10NOV ${f.origin}${f.destination} HK${paxCountOnFlight}       ${f.std} ${f.etd}   ${f.gate} E`);
+             lineIdx++;
+          });
+          
+          addLog(`  ${lineIdx} AP LON 020-7123-4567`);
+          lineIdx++;
+          addLog(`  ${lineIdx} TK TL${new Date().getDate()}NOV/RIX1A0988`);
        } else {
           addLog('NO PNR FOUND');
        }
