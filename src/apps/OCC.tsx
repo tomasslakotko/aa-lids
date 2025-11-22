@@ -2,7 +2,7 @@ import { useAirportStore } from '../store/airportStore';
 import type { Flight } from '../store/airportStore';
 import { useState } from 'react';
 import clsx from 'clsx';
-import { AlertTriangle, Plane, Clock, MapPin, MessageSquare, Ban, CheckCircle, Search, X } from 'lucide-react';
+import { Plane, Clock, MapPin, MessageSquare, Ban, CheckCircle, Search } from 'lucide-react';
 
 export const OCCApp = () => {
   const flights = useAirportStore((state) => state.flights);

@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useAirportStore } from '../store/airportStore';
-import type { Flight, Passenger } from '../store/airportStore';
+import type { Passenger } from '../store/airportStore';
 import clsx from 'clsx';
-import { Plane, Clock, Cloud, Sun, Wifi } from 'lucide-react';
+import { Sun, Wifi } from 'lucide-react';
 
 const CITY_NAMES: Record<string, string> = {
   'RIX': 'RIGA', 'OSL': 'OSLO', 'HEL': 'HELSINKI', 'CDG': 'PARIS', 
