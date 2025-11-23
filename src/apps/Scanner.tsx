@@ -741,26 +741,26 @@ export const ScannerApp = () => {
         )}
       </div>
 
-      {/* Comment Modal */}
+      {/* Comment Modal - Mobile optimized */}
       {showCommentModal && commentPassenger && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <FileText size={24} className="text-blue-600" />
-              <h2 className="text-xl font-bold text-gray-800">Boarding Comment</h2>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-4 sm:p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+              <FileText size={20} className="sm:w-6 sm:h-6 text-blue-600 flex-shrink-0" />
+              <h2 className="text-lg sm:text-xl font-bold text-gray-800">Boarding Comment</h2>
             </div>
-            <div className="mb-4">
-              <div className="text-sm text-gray-600 mb-2">Passenger:</div>
-              <div className="font-bold text-lg text-gray-900">{commentPassenger.name}</div>
+            <div className="mb-3 sm:mb-4">
+              <div className="text-xs sm:text-sm text-gray-600 mb-1 sm:mb-2">Passenger:</div>
+              <div className="font-bold text-base sm:text-lg text-gray-900">{commentPassenger.name}</div>
               <div className="text-xs text-gray-500 mt-1">PNR: {commentPassenger.pnr}</div>
             </div>
-            <div className="mb-6">
-              <div className="text-sm text-gray-600 mb-2">Comment:</div>
-              <div className="bg-yellow-50 border-2 border-yellow-300 rounded-lg p-4 text-gray-800 whitespace-pre-wrap">
+            <div className="mb-4 sm:mb-6">
+              <div className="text-xs sm:text-sm text-gray-600 mb-1 sm:mb-2">Comment:</div>
+              <div className="bg-yellow-50 border-2 border-yellow-300 rounded-lg p-3 sm:p-4 text-sm sm:text-base text-gray-800 whitespace-pre-wrap">
                 {commentPassenger.comment}
               </div>
             </div>
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
               <button
                 onClick={() => {
                   // Acknowledge and board the passenger
@@ -780,7 +780,7 @@ export const ScannerApp = () => {
                   setShowCommentModal(false);
                   setCommentPassenger(null);
                 }}
-                className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center gap-2"
+                className="flex-1 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-bold py-4 sm:py-3 px-4 rounded-lg flex items-center justify-center gap-2 text-base sm:text-sm touch-manipulation"
               >
                 <CheckCircle size={20} />
                 Acknowledge & Board
