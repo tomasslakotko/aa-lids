@@ -4,7 +4,7 @@ import clsx from 'clsx';
 import { 
   Users, User, ArrowLeft, HelpCircle, 
   Printer, Plus, UserPlus, UserMinus,
-  CheckCircle, MessageSquare, ArrowDown, Camera, CameraOff, X
+  CheckCircle, MessageSquare, ArrowDown, Camera, CameraOff, X, AlertCircle
 } from 'lucide-react';
 import { Briefsheet } from '../components/Briefsheet';
 import { Html5Qrcode } from 'html5-qrcode';
@@ -774,14 +774,24 @@ export const BoardingApp = () => {
                     </div>
                     <div>{p.bagCount}</div>
                     <div>{p.bagCount * 23}</div>
-                    <div>
+                    <div className="flex items-center gap-1">
                        {p.status === 'CHECKED_IN' && (
-                         <button 
-                           onClick={(e) => { e.stopPropagation(); handleBoardPax(p.pnr); }}
-                           className="bg-green-600 text-white px-2 py-0.5 rounded text-[9px] hover:bg-green-700"
-                         >
-                           BOARD
-                         </button>
+                         <>
+                           {p.boardingComment && p.boardingComment.trim() && (
+                             <span title={p.boardingComment} className="cursor-help">
+                               <AlertCircle 
+                                 size={14} 
+                                 className="text-red-600 fill-red-600" 
+                               />
+                             </span>
+                           )}
+                           <button 
+                             onClick={(e) => { e.stopPropagation(); handleBoardPax(p.pnr); }}
+                             className="bg-green-600 text-white px-2 py-0.5 rounded text-[9px] hover:bg-green-700"
+                           >
+                             BOARD
+                           </button>
+                         </>
                        )}
                     </div>
                  </div>
