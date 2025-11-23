@@ -241,10 +241,32 @@ For production:
 - Implement proper authentication if needed
 - Monitor API usage in Supabase dashboard
 
+## Enable Real-time (Required for Live Updates Across Devices)
+
+To enable live updates across multiple devices, you need to enable Supabase Realtime:
+
+1. **Go to Supabase Dashboard** → Your Project → **Database** → **Replication**
+2. **Enable Replication** for the following tables:
+   - `flights` ✅
+   - `passengers` ✅
+3. Click **Save**
+
+Alternatively, you can enable it via SQL in the SQL Editor:
+
+```sql
+-- Enable real-time for flights table
+ALTER PUBLICATION supabase_realtime ADD TABLE flights;
+
+-- Enable real-time for passengers table
+ALTER PUBLICATION supabase_realtime ADD TABLE passengers;
+```
+
+**Note**: Real-time is now automatically enabled when the app starts. Changes made on one device will instantly appear on all other devices!
+
 ## Benefits of Supabase
 
 ✅ **Easy Setup**: Simple API keys, no complex authentication  
 ✅ **Free Tier**: Generous free tier for development  
-✅ **Real-time**: Can enable real-time subscriptions if needed  
+✅ **Real-time**: Live updates across devices (now enabled!)  
 ✅ **Dashboard**: Great UI for viewing and managing data  
 ✅ **PostgreSQL**: Full PostgreSQL database with all features

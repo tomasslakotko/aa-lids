@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { initializeDatabase, loadAllData, saveAllData } from '../services/database';
+import { setupRealtimeSubscriptions, setLocalUpdateFlag } from '../services/realtime';
 
 // --- Types ---
 
@@ -133,6 +134,14 @@ interface AirportStore {
   // Database Actions
   syncToDatabase: () => Promise<void>;
   loadFromDatabase: () => Promise<void>;
+  
+  // Real-time update handlers
+  updateFlightFromRealtime: (flight: Flight) => void;
+  insertFlightFromRealtime: (flight: Flight) => void;
+  deleteFlightFromRealtime: (flightId: string) => void;
+  updatePassengerFromRealtime: (passenger: Passenger) => void;
+  insertPassengerFromRealtime: (passenger: Passenger) => void;
+  deletePassengerFromRealtime: (passengerId: string) => void;
 }
 
 // --- Data Generation ---
@@ -1058,6 +1067,8 @@ export const useAirportStore = create<AirportStore>()(
       // Database Actions
       syncToDatabase: async () => {
         try {
+          // Set flag to prevent real-time updates from triggering during our own sync
+          setLocalUpdateFlag(true);
           const state = get();
           await saveAllData({
             flights: state.flights,
@@ -1067,10 +1078,79 @@ export const useAirportStore = create<AirportStore>()(
             complaints: state.complaints,
             emails: state.emails
           });
+          // Reset flag after a short delay to allow DB to process
+          setTimeout(() => setLocalUpdateFlag(false), 1000);
         } catch (error: any) {
           console.error('Error syncing to database:', error);
+          setLocalUpdateFlag(false);
           get().addLog(`Database sync failed: ${error.message}`, 'SYSTEM', 'ERROR');
         }
+      },
+      
+      // Real-time update handlers (called from real-time subscriptions)
+      updateFlightFromRealtime: (flight: Flight) => {
+        set((state) => {
+          const existingIndex = state.flights.findIndex(f => f.id === flight.id);
+          if (existingIndex >= 0) {
+            // Update existing flight
+            const newFlights = [...state.flights];
+            newFlights[existingIndex] = flight;
+            return { flights: newFlights };
+          } else {
+            // Add new flight
+            return { flights: [...state.flights, flight] };
+          }
+        });
+        get().addLog(`Flight ${flight.flightNumber} updated from another device`, 'SYSTEM', 'INFO');
+      },
+      
+      insertFlightFromRealtime: (flight: Flight) => {
+        set((state) => {
+          // Check if flight already exists
+          if (state.flights.find(f => f.id === flight.id)) {
+            return state; // Already exists, skip
+          }
+          return { flights: [...state.flights, flight] };
+        });
+        get().addLog(`Flight ${flight.flightNumber} added from another device`, 'SYSTEM', 'INFO');
+      },
+      
+      deleteFlightFromRealtime: (flightId: string) => {
+        set((state) => ({
+          flights: state.flights.filter(f => f.id !== flightId)
+        }));
+        get().addLog(`Flight ${flightId} deleted from another device`, 'SYSTEM', 'INFO');
+      },
+      
+      updatePassengerFromRealtime: (passenger: Passenger) => {
+        set((state) => {
+          const existingIndex = state.passengers.findIndex(p => p.id === passenger.id);
+          if (existingIndex >= 0) {
+            // Update existing passenger
+            const newPassengers = [...state.passengers];
+            newPassengers[existingIndex] = passenger;
+            return { passengers: newPassengers };
+          } else {
+            // Add new passenger
+            return { passengers: [...state.passengers, passenger] };
+          }
+        });
+      },
+      
+      insertPassengerFromRealtime: (passenger: Passenger) => {
+        set((state) => {
+          // Check if passenger already exists
+          if (state.passengers.find(p => p.id === passenger.id)) {
+            return state; // Already exists, skip
+          }
+          return { passengers: [...state.passengers, passenger] };
+        });
+      },
+      
+      deletePassengerFromRealtime: (passengerId: string) => {
+        set((state) => ({
+          passengers: state.passengers.filter(p => p.id !== passengerId)
+        }));
       },
       
       loadFromDatabase: async () => {
@@ -1102,6 +1182,8 @@ export const useAirportStore = create<AirportStore>()(
 
 // Initialize database on module load
 let dbInitialized = false;
+let realtimeCleanup: (() => void) | null = null;
+
 export async function initializeAirportDatabase() {
   if (dbInitialized) return;
   
@@ -1112,9 +1194,47 @@ export async function initializeAirportDatabase() {
     // Load data from database
     const store = useAirportStore.getState();
     await store.loadFromDatabase();
+    
+    // Set up real-time subscriptions for live updates across devices
+    realtimeCleanup = setupRealtimeSubscriptions(
+      // Flight update handler
+      (flight) => {
+        store.updateFlightFromRealtime(flight);
+      },
+      // Flight insert handler
+      (flight) => {
+        store.insertFlightFromRealtime(flight);
+      },
+      // Flight delete handler
+      (flightId) => {
+        store.deleteFlightFromRealtime(flightId);
+      },
+      // Passenger update handler
+      (passenger) => {
+        store.updatePassengerFromRealtime(passenger);
+      },
+      // Passenger insert handler
+      (passenger) => {
+        store.insertPassengerFromRealtime(passenger);
+      },
+      // Passenger delete handler
+      (passengerId) => {
+        store.deletePassengerFromRealtime(passengerId);
+      }
+    );
+    
+    store.addLog('Real-time subscriptions enabled - changes will sync across devices', 'SYSTEM', 'SUCCESS');
   } catch (error: any) {
     console.error('Database initialization failed:', error);
     // Continue with localStorage fallback
     useAirportStore.getState().addLog(`Database unavailable: ${error.message}. Using localStorage.`, 'SYSTEM', 'WARNING');
+  }
+}
+
+// Cleanup function for real-time subscriptions
+export function cleanupRealtimeSubscriptions() {
+  if (realtimeCleanup) {
+    realtimeCleanup();
+    realtimeCleanup = null;
   }
 }
