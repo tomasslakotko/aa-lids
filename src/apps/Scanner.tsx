@@ -408,11 +408,14 @@ export const ScannerApp = () => {
       
       // Start the scanner - permission is already granted
       try {
+        // Calculate QR box size based on screen width (mobile optimized)
+        const qrBoxSize = Math.min(window.innerWidth * 0.8, 400);
+        
         await html5QrCode.start(
           { facingMode: 'environment' },
           {
             fps: 10,
-            qrbox: { width: 300, height: 300 },
+            qrbox: { width: qrBoxSize, height: qrBoxSize },
             aspectRatio: 1.0,
           },
           async (decodedText) => {
@@ -426,11 +429,14 @@ export const ScannerApp = () => {
         // If environment camera fails, try user-facing camera (front camera)
         if (envErr.name === 'NotFoundError' || envErr.message?.includes('environment') || envErr.message?.includes('not found')) {
           console.log('Environment camera not found, trying user-facing camera');
+          // Calculate QR box size based on screen width (mobile optimized)
+          const qrBoxSize = Math.min(window.innerWidth * 0.8, 400);
+          
           await html5QrCode.start(
             { facingMode: 'user' },
             {
               fps: 10,
-              qrbox: { width: 300, height: 300 },
+              qrbox: { width: qrBoxSize, height: qrBoxSize },
               aspectRatio: 1.0,
             },
             async (decodedText) => {
@@ -525,30 +531,34 @@ export const ScannerApp = () => {
 
   return (
     <div className="h-full w-full bg-gray-900 flex flex-col text-white">
-      {/* Header */}
-      <div className="bg-gray-800 border-b border-gray-700 p-4">
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Plane size={24} />
-            QR Scanner
+      {/* Header - Compact on mobile */}
+      <div className="bg-gray-800 border-b border-gray-700 p-3 sm:p-4">
+        <div className="flex items-center justify-between mb-3 sm:mb-4">
+          <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
+            <Plane size={20} className="sm:w-6 sm:h-6" />
+            <span className="hidden sm:inline">QR Scanner</span>
+            <span className="sm:hidden">Scanner</span>
           </h1>
           {isScanning && (
             <button
               onClick={stopScanner}
-              className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg"
+              className="flex items-center gap-2 px-4 py-3 sm:px-4 sm:py-2 bg-red-600 hover:bg-red-700 active:bg-red-800 rounded-lg text-base sm:text-sm font-semibold touch-manipulation"
             >
               <CameraOff size={20} />
-              Stop Scanning
+              <span className="hidden sm:inline">Stop Scanning</span>
+              <span className="sm:hidden">Stop</span>
             </button>
           )}
         </div>
 
-        {/* Flight Info */}
+        {/* Flight Info - Mobile optimized */}
         {selectedFlight ? (
-          <div className="flex gap-4 items-center">
-            <label className="text-sm font-semibold">Connected Flight:</label>
-            <div className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white">
-              {selectedFlight.flightNumber} - {selectedFlight.origin} → {selectedFlight.destination} ({selectedFlight.std})
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 sm:items-center">
+            <label className="text-xs sm:text-sm font-semibold hidden sm:inline">Connected Flight:</label>
+            <div className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2.5 sm:py-2 text-white text-sm sm:text-base">
+              <div className="font-bold">{selectedFlight.flightNumber}</div>
+              <div className="text-xs text-gray-300 sm:hidden">{selectedFlight.origin} → {selectedFlight.destination} ({selectedFlight.std})</div>
+              <div className="hidden sm:inline">{selectedFlight.origin} → {selectedFlight.destination} ({selectedFlight.std})</div>
             </div>
             <button
               onClick={() => {
@@ -557,42 +567,43 @@ export const ScannerApp = () => {
                   stopScanner();
                 }
               }}
-              className="px-3 py-2 bg-red-600 hover:bg-red-700 rounded text-sm"
+              className="px-4 py-3 sm:px-3 sm:py-2 bg-red-600 hover:bg-red-700 active:bg-red-800 rounded text-sm font-semibold touch-manipulation"
             >
               Disconnect
             </button>
           </div>
         ) : (
-          <div className="bg-yellow-900 border border-yellow-700 rounded px-4 py-2 text-yellow-200 text-sm">
-            <strong>No flight connected.</strong> Scan the flight connection QR code from Boarding Gate app to start scanning boarding passes.
+          <div className="bg-yellow-900 border border-yellow-700 rounded px-3 py-2.5 sm:px-4 sm:py-2 text-yellow-200 text-xs sm:text-sm">
+            <strong>No flight connected.</strong> <span className="hidden sm:inline">Scan the flight connection QR code from Boarding Gate app to start scanning boarding passes.</span>
+            <span className="sm:hidden">Scan flight QR code first.</span>
           </div>
         )}
 
-        {/* Flight Stats */}
+        {/* Flight Stats - Mobile optimized */}
         {selectedFlight && (
-          <div className="mt-4 flex gap-6 text-sm">
-            <div>
-              <span className="text-gray-400">Total:</span>
-              <span className="ml-2 font-bold">{stats.total}</span>
+          <div className="mt-3 sm:mt-4 grid grid-cols-2 sm:flex sm:gap-6 gap-3 text-xs sm:text-sm">
+            <div className="bg-gray-700 rounded px-2 py-1.5 sm:bg-transparent sm:p-0">
+              <span className="text-gray-400 block sm:inline">Total:</span>
+              <span className="ml-0 sm:ml-2 font-bold text-lg sm:text-base block sm:inline">{stats.total}</span>
             </div>
-            <div>
-              <span className="text-gray-400">Checked In:</span>
-              <span className="ml-2 font-bold text-blue-400">{stats.checkedIn}</span>
+            <div className="bg-gray-700 rounded px-2 py-1.5 sm:bg-transparent sm:p-0">
+              <span className="text-gray-400 block sm:inline">Checked In:</span>
+              <span className="ml-0 sm:ml-2 font-bold text-blue-400 text-lg sm:text-base block sm:inline">{stats.checkedIn}</span>
             </div>
-            <div>
-              <span className="text-gray-400">Boarded:</span>
-              <span className="ml-2 font-bold text-green-400">{stats.boarded}</span>
+            <div className="bg-gray-700 rounded px-2 py-1.5 sm:bg-transparent sm:p-0">
+              <span className="text-gray-400 block sm:inline">Boarded:</span>
+              <span className="ml-0 sm:ml-2 font-bold text-green-400 text-lg sm:text-base block sm:inline">{stats.boarded}</span>
             </div>
-            <div>
-              <span className="text-gray-400">Gate:</span>
-              <span className="ml-2 font-bold">{selectedFlight.gate || 'TBA'}</span>
+            <div className="bg-gray-700 rounded px-2 py-1.5 sm:bg-transparent sm:p-0">
+              <span className="text-gray-400 block sm:inline">Gate:</span>
+              <span className="ml-0 sm:ml-2 font-bold text-lg sm:text-base block sm:inline">{selectedFlight.gate || 'TBA'}</span>
             </div>
           </div>
         )}
       </div>
 
-      {/* Scanner Area */}
-      <div className="flex-1 flex flex-col items-center justify-center p-4 relative">
+      {/* Scanner Area - Mobile optimized */}
+      <div className="flex-1 flex flex-col items-center justify-center p-2 sm:p-4 relative overflow-hidden">
         {!selectedFlightId ? (
           <>
             {/* Always render the scanner element (hidden when not scanning) for iOS compatibility */}
@@ -606,23 +617,23 @@ export const ScannerApp = () => {
             ></div>
             
             {!isScanning ? (
-              <div className="text-center text-gray-400">
-                <Plane size={64} className="mx-auto mb-4 opacity-50" />
-                <p className="text-lg mb-2">Scan flight connection QR code first</p>
-                <p className="text-sm text-gray-500 mb-6">Get the QR code from Boarding Gate app</p>
+              <div className="text-center text-gray-400 px-4">
+                <Plane size={48} className="sm:w-16 sm:h-16 mx-auto mb-4 opacity-50" />
+                <p className="text-base sm:text-lg mb-2 font-semibold">Scan flight connection QR code first</p>
+                <p className="text-xs sm:text-sm text-gray-500 mb-6">Get the QR code from Boarding Gate app</p>
                 <button
                   onClick={async (e) => {
                     e.preventDefault();
                     await startScanner();
                   }}
-                  className="px-8 py-4 bg-green-600 hover:bg-green-700 rounded-lg text-lg font-bold flex items-center gap-3 mx-auto"
+                  className="px-8 py-4 sm:px-8 sm:py-4 bg-green-600 hover:bg-green-700 active:bg-green-800 rounded-xl text-base sm:text-lg font-bold flex items-center justify-center gap-3 mx-auto w-full max-w-xs touch-manipulation shadow-lg"
                 >
-                  <Camera size={24} />
-                  Scan Flight QR Code
+                  <Camera size={28} className="sm:w-6 sm:h-6" />
+                  <span>Scan Flight QR Code</span>
                 </button>
               </div>
             ) : (
-              <p className="mt-4 text-gray-300 text-center">
+              <p className="mt-4 text-gray-300 text-center text-sm sm:text-base px-4">
                 Point camera at flight connection QR code
               </p>
             )}
@@ -640,67 +651,72 @@ export const ScannerApp = () => {
             ></div>
             
             {!isScanning && (
-              <div className="text-center">
-                <Camera size={64} className="mx-auto mb-4 text-gray-400" />
-                <p className="text-xl mb-4 text-gray-300">Ready to scan boarding passes</p>
+              <div className="text-center px-4 w-full">
+                <Camera size={48} className="sm:w-16 sm:h-16 mx-auto mb-4 text-gray-400" />
+                <p className="text-lg sm:text-xl mb-6 text-gray-300 font-semibold">Ready to scan boarding passes</p>
                 <button
                   onClick={async (e) => {
                     e.preventDefault();
                     await startScanner();
                   }}
-                  className="px-8 py-4 bg-blue-600 hover:bg-blue-700 rounded-lg text-lg font-bold flex items-center gap-3 mx-auto"
+                  className="px-8 py-5 sm:px-8 sm:py-4 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-xl text-base sm:text-lg font-bold flex items-center justify-center gap-3 mx-auto w-full max-w-xs touch-manipulation shadow-lg"
                 >
-                  <Camera size={24} />
-                  Start Scanning
+                  <Camera size={28} className="sm:w-6 sm:h-6" />
+                  <span>Start Scanning Boarding Passes</span>
                 </button>
               </div>
             )}
             {isScanning && (
-              <p className="mt-4 text-gray-300 text-center">
-                Point camera at boarding pass QR code
-              </p>
+              <div className="absolute bottom-4 left-0 right-0 px-4">
+                <p className="text-gray-300 text-center text-sm sm:text-base bg-black bg-opacity-50 rounded-lg py-2 px-4">
+                  Point camera at boarding pass QR code
+                </p>
+              </div>
             )}
           </>
         )}
 
-        {/* Error Message */}
+        {/* Error Message - Mobile optimized */}
         {scanError && (
-          <div className="absolute bottom-4 left-4 right-4 bg-red-600 border border-red-700 rounded-lg p-4 flex items-center gap-3 z-50">
-            <AlertCircle size={24} />
-            <div className="flex-1">
-              <div className="font-bold mb-1">Camera Error</div>
-              <div className="text-sm">{scanError}</div>
+          <div className="absolute bottom-2 sm:bottom-4 left-2 sm:left-4 right-2 sm:right-4 bg-red-600 border border-red-700 rounded-lg p-3 sm:p-4 flex items-start gap-2 sm:gap-3 z-50 shadow-lg">
+            <AlertCircle size={20} className="sm:w-6 sm:h-6 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <div className="font-bold mb-1 text-sm sm:text-base">Camera Error</div>
+              <div className="text-xs sm:text-sm">{scanError}</div>
               {scanError.includes('denied') && (
                 <div className="text-xs mt-2 opacity-90">
                   Tip: Check your browser's address bar for a camera icon and click it to allow access.
                 </div>
               )}
             </div>
-            <button onClick={() => setScanError(null)} className="text-red-200 hover:text-white">
-              <X size={20} />
+            <button 
+              onClick={() => setScanError(null)} 
+              className="text-red-200 hover:text-white active:text-red-100 touch-manipulation flex-shrink-0 p-1"
+            >
+              <X size={20} className="sm:w-5 sm:h-5" />
             </button>
           </div>
         )}
 
-        {/* Success/Last Scanned Feedback */}
+        {/* Success/Last Scanned Feedback - Mobile optimized */}
         {lastScanned && (
           <div className={clsx(
-            "absolute top-4 left-4 right-4 rounded-lg p-4 border-2 shadow-lg",
+            "absolute top-2 sm:top-4 left-2 sm:left-4 right-2 sm:right-4 rounded-lg p-3 sm:p-4 border-2 shadow-lg z-50",
             lastScanned.success 
               ? "bg-green-600 border-green-500" 
               : "bg-red-600 border-red-500"
           )}>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               {lastScanned.success ? (
-                <CheckCircle size={32} className="text-green-200" />
+                <CheckCircle size={28} className="sm:w-8 sm:h-8 text-green-200 flex-shrink-0" />
               ) : (
-                <X size={32} className="text-red-200" />
+                <X size={28} className="sm:w-8 sm:h-8 text-red-200 flex-shrink-0" />
               )}
-              <div className="flex-1">
-                <div className="font-bold text-lg">
+              <div className="flex-1 min-w-0">
+                <div className="font-bold text-base sm:text-lg">
                   {lastScanned.success ? 'BOARDED' : 'FAILED'}
                 </div>
-                <div className="text-sm opacity-90">
+                <div className="text-xs sm:text-sm opacity-90 truncate">
                   {lastScanned.name} ({lastScanned.pnr})
                 </div>
               </div>
@@ -714,11 +730,11 @@ export const ScannerApp = () => {
                     }
                   }
                 }}
-                className="px-3 py-1.5 bg-white bg-opacity-20 hover:bg-opacity-30 text-white rounded text-sm font-semibold flex items-center gap-1"
+                className="px-3 py-2 sm:px-3 sm:py-1.5 bg-white bg-opacity-20 hover:bg-opacity-30 active:bg-opacity-40 text-white rounded text-xs sm:text-sm font-semibold flex items-center gap-1 touch-manipulation flex-shrink-0"
                 title="Add/Edit Comment"
               >
-                <FileText size={16} />
-                Comment
+                <FileText size={16} className="sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">Comment</span>
               </button>
             </div>
           </div>
@@ -785,7 +801,7 @@ export const ScannerApp = () => {
                     }
                   }
                 }}
-                className="px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg"
+                className="px-4 py-4 sm:py-3 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold rounded-lg text-base sm:text-sm touch-manipulation"
               >
                 Edit Comment
               </button>
@@ -794,7 +810,7 @@ export const ScannerApp = () => {
                   setShowCommentModal(false);
                   setCommentPassenger(null);
                 }}
-                className="px-4 py-3 bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold rounded-lg"
+                className="px-4 py-4 sm:py-3 bg-gray-300 hover:bg-gray-400 active:bg-gray-500 text-gray-800 font-bold rounded-lg text-base sm:text-sm touch-manipulation"
               >
                 Cancel
               </button>
