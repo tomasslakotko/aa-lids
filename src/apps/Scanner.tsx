@@ -140,8 +140,10 @@ export const ScannerApp = () => {
     setIsScanning(true);
     setScanError(null);
     
-    // Wait for DOM to update
+    // For iOS/iPad, we need to ensure the permission request happens in the same user gesture context
+    // Use requestAnimationFrame to allow DOM update, but keep it minimal for iOS compatibility
     requestAnimationFrame(() => {
+      // Minimal delay to ensure element is rendered, but keep it short for iOS gesture chain
       setTimeout(async () => {
         if (!scannerElementRef.current) {
           setIsScanning(false);
@@ -154,11 +156,12 @@ export const ScannerApp = () => {
           const html5QrCode = new Html5Qrcode(elementId);
           scannerRef.current = html5QrCode;
           
-          // Try to start with environment camera first, fallback to any camera
-          let cameraConfig = { facingMode: 'environment' };
+          // Start the scanner - html5-qrcode will request camera permission
+          // On iOS, this must be called from user gesture (which it is via button click)
+          // Try environment camera first (back camera on mobile)
           try {
             await html5QrCode.start(
-              cameraConfig,
+              { facingMode: 'environment' },
               {
                 fps: 10,
                 qrbox: { width: 300, height: 300 },
@@ -172,12 +175,11 @@ export const ScannerApp = () => {
               }
             );
           } catch (envErr: any) {
-            // If environment camera fails, try any available camera
+            // If environment camera fails, try user-facing camera (front camera)
             if (envErr.name === 'NotFoundError' || envErr.message?.includes('environment') || envErr.message?.includes('not found')) {
-              console.log('Environment camera not found, trying any available camera');
-              cameraConfig = { facingMode: 'user' };
+              console.log('Environment camera not found, trying user-facing camera');
               await html5QrCode.start(
-                cameraConfig,
+                { facingMode: 'user' },
                 {
                   fps: 10,
                   qrbox: { width: 300, height: 300 },
@@ -377,7 +379,10 @@ export const ScannerApp = () => {
             <Camera size={64} className="mx-auto mb-4 text-gray-400" />
             <p className="text-xl mb-4 text-gray-300">Ready to scan boarding passes</p>
             <button
-              onClick={startScanner}
+              onClick={async (e) => {
+                e.preventDefault();
+                await startScanner();
+              }}
               className="px-8 py-4 bg-blue-600 hover:bg-blue-700 rounded-lg text-lg font-bold flex items-center gap-3 mx-auto"
             >
               <Camera size={24} />
