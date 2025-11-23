@@ -136,26 +136,49 @@ export const ScannerApp = () => {
       return;
     }
 
-    // For iOS, we MUST start the scanner synchronously in the click handler
-    // Check if element exists (it should be pre-rendered)
-    const element = scannerElementRef.current;
-    if (!element) {
-      setScanError('Scanner not ready. Please refresh and try again.');
+    // Set scanning state FIRST - makes element visible
+    setIsScanning(true);
+    setScanError(null);
+
+    // For iOS, try requesting permission directly first
+    // This must happen in the same user gesture
+    let stream: MediaStream | null = null;
+    try {
+      // Request camera permission directly - this triggers the iOS permission prompt
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { facingMode: 'environment' } 
+        });
+        // Stop the stream immediately - we just wanted permission
+        stream.getTracks().forEach(track => track.stop());
+      }
+    } catch (permErr: any) {
+      // Permission was denied or error occurred
+      setIsScanning(false);
+      if (permErr.name === 'NotAllowedError' || permErr.name === 'PermissionDeniedError') {
+        setScanError('Camera access denied. Please allow camera access in your browser settings.');
+      } else if (permErr.name === 'NotFoundError') {
+        setScanError('No camera found. Please connect a camera.');
+      } else {
+        setScanError(`Camera error: ${permErr.message || 'Please allow camera access'}`);
+      }
       return;
     }
 
-    // Set scanning state - makes element visible
-    setIsScanning(true);
-    setScanError(null);
+    // Now start the scanner with the element
+    const element = scannerElementRef.current;
+    if (!element) {
+      setIsScanning(false);
+      setScanError('Scanner element not ready. Please try again.');
+      return;
+    }
 
     try {
       const elementId = element.id || 'scanner-qr-reader';
       const html5QrCode = new Html5Qrcode(elementId);
       scannerRef.current = html5QrCode;
       
-      // Start the scanner immediately - html5-qrcode will request camera permission
-      // On iOS, this MUST be called directly from user gesture (button click)
-      // No delays, no async operations that break the gesture chain
+      // Start the scanner - permission is already granted
       try {
         await html5QrCode.start(
           { facingMode: 'environment' },
