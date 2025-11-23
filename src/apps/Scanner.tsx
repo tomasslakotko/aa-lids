@@ -19,6 +19,7 @@ export const ScannerApp = () => {
   const passengers = useAirportStore((state) => state.passengers);
   const boardPassenger = useAirportStore((state) => state.boardPassenger);
   const checkInPassenger = useAirportStore((state) => state.checkInPassenger);
+  const updatePassengerDetails = useAirportStore((state) => state.updatePassengerDetails);
 
   const selectedFlight = flights.find(f => f.id === selectedFlightId);
 
@@ -690,6 +691,22 @@ export const ScannerApp = () => {
                   {lastScanned.name} ({lastScanned.pnr})
                 </div>
               </div>
+              <button
+                onClick={() => {
+                  const found = passengers.find(p => p.pnr === lastScanned.pnr);
+                  if (found) {
+                    const comment = prompt('Add or edit boarding comment:', found.boardingComment || '');
+                    if (comment !== null) {
+                      updatePassengerDetails(found.pnr, { boardingComment: comment || undefined });
+                    }
+                  }
+                }}
+                className="px-3 py-1.5 bg-white bg-opacity-20 hover:bg-opacity-30 text-white rounded text-sm font-semibold flex items-center gap-1"
+                title="Add/Edit Comment"
+              >
+                <FileText size={16} />
+                Comment
+              </button>
             </div>
           </div>
         )}
@@ -738,6 +755,26 @@ export const ScannerApp = () => {
               >
                 <CheckCircle size={20} />
                 Acknowledge & Board
+              </button>
+              <button
+                onClick={() => {
+                  // Edit comment
+                  const found = passengers.find(p => p.pnr === commentPassenger.pnr);
+                  if (found) {
+                    const newComment = prompt('Edit boarding comment:', found.boardingComment || '');
+                    if (newComment !== null) {
+                      updatePassengerDetails(found.pnr, { boardingComment: newComment || undefined });
+                      // Update the modal with new comment
+                      setCommentPassenger({
+                        ...commentPassenger,
+                        comment: newComment || ''
+                      });
+                    }
+                  }
+                }}
+                className="px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg"
+              >
+                Edit Comment
               </button>
               <button
                 onClick={() => {
