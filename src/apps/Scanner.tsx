@@ -136,25 +136,26 @@ export const ScannerApp = () => {
       return;
     }
 
-    // For iOS, we need the element to exist before starting
-    // Pre-render it but keep it hidden until we start scanning
-    if (!scannerElementRef.current) {
-      setScanError('Scanner element not ready. Please try again.');
+    // For iOS, we MUST start the scanner synchronously in the click handler
+    // Check if element exists (it should be pre-rendered)
+    const element = scannerElementRef.current;
+    if (!element) {
+      setScanError('Scanner not ready. Please refresh and try again.');
       return;
     }
 
+    // Set scanning state - makes element visible
+    setIsScanning(true);
+    setScanError(null);
+
     try {
-      const elementId = scannerElementRef.current.id || 'scanner-qr-reader';
+      const elementId = element.id || 'scanner-qr-reader';
       const html5QrCode = new Html5Qrcode(elementId);
       scannerRef.current = html5QrCode;
       
-      // Set scanning state - this will show the element
-      setIsScanning(true);
-      setScanError(null);
-      
       // Start the scanner immediately - html5-qrcode will request camera permission
-      // On iOS, this must be called directly from user gesture (button click)
-      // Try environment camera first (back camera on mobile)
+      // On iOS, this MUST be called directly from user gesture (button click)
+      // No delays, no async operations that break the gesture chain
       try {
         await html5QrCode.start(
           { facingMode: 'environment' },
@@ -359,7 +360,7 @@ export const ScannerApp = () => {
               )}
             ></div>
             
-            {!isScanning ? (
+            {!isScanning && (
               <div className="text-center">
                 <Camera size={64} className="mx-auto mb-4 text-gray-400" />
                 <p className="text-xl mb-4 text-gray-300">Ready to scan boarding passes</p>
@@ -374,7 +375,8 @@ export const ScannerApp = () => {
                   Start Scanning
                 </button>
               </div>
-            ) : (
+            )}
+            {isScanning && (
               <p className="mt-4 text-gray-300 text-center">
                 Point camera at boarding pass QR code
               </p>
