@@ -263,6 +263,35 @@ ALTER PUBLICATION supabase_realtime ADD TABLE passengers;
 
 **Note**: Real-time is now automatically enabled when the app starts. Changes made on one device will instantly appear on all other devices!
 
+### Troubleshooting Real-time Not Working
+
+If changes on one device don't appear on another:
+
+1. **Check Browser Console**: Open DevTools (F12) and look for:
+   - `✅ Successfully subscribed to flights table changes` - means subscription is working
+   - `❌ Error subscribing` - means real-time is not enabled
+   - `Real-time flight UPDATE event received` - means events are coming through
+
+2. **Verify Real-time is Enabled**:
+   - Go to Supabase Dashboard → Database → Replication
+   - Make sure `flights` and `passengers` tables show as enabled
+   - If not, enable them and wait a few seconds
+
+3. **Check RLS Policies**: If Row Level Security is enabled, make sure policies allow SELECT access:
+   ```sql
+   -- Allow public read access (for real-time to work)
+   CREATE POLICY "Allow public read" ON flights FOR SELECT USING (true);
+   CREATE POLICY "Allow public read" ON passengers FOR SELECT USING (true);
+   ```
+
+4. **Test Manually**: 
+   - Open the app on two different browsers/devices
+   - Change a flight status in OCC on Device 1
+   - Check the console on Device 2 - you should see "Real-time flight UPDATE event received"
+   - If you don't see this, real-time is not working
+
+5. **Check Network**: Real-time uses WebSockets - make sure your network/firewall allows WebSocket connections
+
 ## Benefits of Supabase
 
 ✅ **Easy Setup**: Simple API keys, no complex authentication  
