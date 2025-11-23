@@ -134,6 +134,7 @@ interface AirportStore {
   // Database Actions
   syncToDatabase: () => Promise<void>;
   loadFromDatabase: () => Promise<void>;
+  pollDatabaseUpdates: () => Promise<void>;
   
   // Real-time update handlers
   updateFlightFromRealtime: (flight: Flight) => void;
@@ -1171,6 +1172,43 @@ export const useAirportStore = create<AirportStore>()(
           set({ isDatabaseReady: false });
           get().addLog(`Database load failed: ${error.message}. Using local storage.`, 'SYSTEM', 'WARNING');
         }
+      },
+      
+      // Poll database for updates (fallback if real-time doesn't work)
+      pollDatabaseUpdates: async () => {
+        if (!get().isDatabaseReady) return;
+        try {
+          const data = await loadAllData();
+          const currentState = get();
+          
+          // Check if flights have changed
+          const flightsChanged = JSON.stringify(data.flights) !== JSON.stringify(currentState.flights);
+          if (flightsChanged) {
+            // Update flights that have changed
+            data.flights.forEach((dbFlight: Flight) => {
+              const localFlight = currentState.flights.find(f => f.id === dbFlight.id);
+              if (!localFlight || JSON.stringify(localFlight) !== JSON.stringify(dbFlight)) {
+                // Flight has changed, update it
+                get().updateFlightFromRealtime(dbFlight);
+              }
+            });
+          }
+          
+          // Check if passengers have changed
+          const passengersChanged = JSON.stringify(data.passengers) !== JSON.stringify(currentState.passengers);
+          if (passengersChanged) {
+            // Update passengers that have changed
+            data.passengers.forEach((dbPassenger: Passenger) => {
+              const localPassenger = currentState.passengers.find(p => p.id === dbPassenger.id);
+              if (!localPassenger || JSON.stringify(localPassenger) !== JSON.stringify(dbPassenger)) {
+                // Passenger has changed, update it
+                get().updatePassengerFromRealtime(dbPassenger);
+              }
+            });
+          }
+        } catch (error: any) {
+          console.error('Error polling database:', error);
+        }
       }
     }),
     {
@@ -1224,6 +1262,18 @@ export async function initializeAirportDatabase() {
     );
     
     store.addLog('Real-time subscriptions enabled - changes will sync across devices', 'SYSTEM', 'SUCCESS');
+    
+    // Set up polling as fallback (every 3 seconds) in case real-time doesn't work
+    const pollInterval = setInterval(() => {
+      store.pollDatabaseUpdates();
+    }, 3000);
+    
+    // Store cleanup function that also clears polling
+    const originalCleanup = realtimeCleanup;
+    realtimeCleanup = () => {
+      if (originalCleanup) originalCleanup();
+      clearInterval(pollInterval);
+    };
   } catch (error: any) {
     console.error('Database initialization failed:', error);
     // Continue with localStorage fallback
