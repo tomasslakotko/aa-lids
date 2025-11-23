@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAirportStore } from '../store/airportStore';
 import clsx from 'clsx';
 import { 
@@ -7,6 +7,8 @@ import {
   CheckCircle, MessageSquare
 } from 'lucide-react';
 import { Briefsheet } from '../components/Briefsheet';
+
+const BOARDING_STORAGE_KEY = 'boarding-selected-flight';
 
 // Mock helper for gender (random for demo since we don't store it)
 const getGender = (name: string) => {
@@ -22,7 +24,11 @@ const getClass = (seat: string) => {
 
 export const BoardingApp = () => {
   const [flightInput, setFlightInput] = useState('');
-  const [selectedFlightId, setSelectedFlightId] = useState<string>('');
+  const [selectedFlightId, setSelectedFlightId] = useState<string>(() => {
+    // Load from localStorage on initial render
+    const saved = localStorage.getItem(BOARDING_STORAGE_KEY);
+    return saved || '';
+  });
   const [activeTab, setActiveTab] = useState<'ALL' | 'CHECKED_IN' | 'BOARDED' | 'WAITLIST'>('ALL');
   const [selectedPaxId, setSelectedPaxId] = useState<string | null>(null);
   const [gateMsg, setGateMsg] = useState('');
@@ -30,6 +36,30 @@ export const BoardingApp = () => {
 
   const flights = useAirportStore((state) => state.flights);
   const passengers = useAirportStore((state) => state.passengers);
+  
+  // Persist selectedFlightId to localStorage whenever it changes
+  useEffect(() => {
+    if (selectedFlightId) {
+      localStorage.setItem(BOARDING_STORAGE_KEY, selectedFlightId);
+    } else {
+      localStorage.removeItem(BOARDING_STORAGE_KEY);
+    }
+  }, [selectedFlightId]);
+  
+  // Load flight details when flight is selected or flights are loaded
+  useEffect(() => {
+    if (selectedFlightId && flights.length > 0) {
+      const flight = flights.find(f => f.id === selectedFlightId);
+      if (flight) {
+        setFlightInput(flight.flightNumber);
+        setGateMsg(flight.gateMessage || '');
+      } else {
+        // Flight not found, clear selection
+        setSelectedFlightId('');
+        localStorage.removeItem(BOARDING_STORAGE_KEY);
+      }
+    }
+  }, [selectedFlightId, flights]);
   const boardPassenger = useAirportStore((state) => state.boardPassenger);
   const updateFlightStatus = useAirportStore((state) => state.updateFlightStatus);
   const updateGateMessage = useAirportStore((state) => state.updateGateMessage);
@@ -273,7 +303,15 @@ export const BoardingApp = () => {
 
       {/* 3. TOOLBAR */}
       <div className="bg-gray-100 p-1 border-b border-gray-400 flex gap-2">
-         <button onClick={() => setSelectedFlightId('')} className="flex items-center gap-1 px-3 py-1 bg-gray-200 border border-gray-400 rounded hover:bg-gray-300 text-xs"><ArrowLeft size={12} /> Back</button>
+         <button 
+           onClick={() => {
+             setSelectedFlightId('');
+             localStorage.removeItem(BOARDING_STORAGE_KEY);
+           }} 
+           className="flex items-center gap-1 px-3 py-1 bg-gray-200 border border-gray-400 rounded hover:bg-gray-300 text-xs"
+         >
+           <ArrowLeft size={12} /> Back
+         </button>
          <button 
            onClick={() => {
              if (selectedFlight) {
