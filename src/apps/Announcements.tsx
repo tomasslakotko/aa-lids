@@ -138,11 +138,21 @@ export const AnnouncementsApp = () => {
   }, []);
 
   // --- Realistic Airport Chime Generator (Web Audio API) ---
-  const playChime = () => {
+  const playChime = async () => {
     if (!audioContext.current) {
       audioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
     const ctx = audioContext.current;
+    
+    // iOS/iPad requires AudioContext to be resumed after user interaction
+    if (ctx.state === 'suspended') {
+      try {
+        await ctx.resume();
+      } catch (e) {
+        console.warn('Could not resume AudioContext:', e);
+      }
+    }
+    
     const t = ctx.currentTime;
 
     // Oscillator 1: "Ding" (High-Low harmonic)
@@ -174,6 +184,15 @@ export const AnnouncementsApp = () => {
   };
 
   const handlePlay = async () => {
+    // iOS/iPad: Ensure AudioContext is resumed (required for audio playback)
+    if (audioContext.current && audioContext.current.state === 'suspended') {
+      try {
+        await audioContext.current.resume();
+      } catch (e) {
+        console.warn('Could not resume AudioContext:', e);
+      }
+    }
+
     if (synth.current.speaking) {
       synth.current.cancel();
     }
@@ -197,23 +216,42 @@ export const AnnouncementsApp = () => {
 
     setIsPlaying(true);
     
-    // 1. Play Realistic Chime first
-    await playChime();
-    
-    // 2. Play Voice Announcement
-    const utterance = new SpeechSynthesisUtterance(textToSpeak);
-    if (selectedVoice) {
-        utterance.voice = selectedVoice;
-        utterance.lang = selectedVoice.lang; // Set language explicitly for better accent
-    }
-    
-    utterance.rate = 0.9; // Slightly faster (0.9) for a more fluid natural flow
-    // utterance.pitch = 1.0; // REMOVED: Allow natural pitch fluctuation
-    utterance.volume = 1.0;
+    try {
+      // 1. Play Realistic Chime first
+      await playChime();
+      
+      // 2. Play Voice Announcement
+      // iOS/iPad: SpeechSynthesis might need a small delay
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      const utterance = new SpeechSynthesisUtterance(textToSpeak);
+      if (selectedVoice) {
+          utterance.voice = selectedVoice;
+          utterance.lang = selectedVoice.lang; // Set language explicitly for better accent
+      }
+      
+      utterance.rate = 0.9; // Slightly faster (0.9) for a more fluid natural flow
+      utterance.volume = 1.0;
 
-    utterance.onend = () => setIsPlaying(false);
-    
-    synth.current.speak(utterance);
+      utterance.onend = () => setIsPlaying(false);
+      utterance.onerror = (e) => {
+        console.error('Speech synthesis error:', e);
+        setIsPlaying(false);
+      };
+      
+      // iOS/iPad: Check if speechSynthesis is available
+      if (!window.speechSynthesis) {
+        alert('Speech synthesis is not available on this device. Please use a device with text-to-speech support.');
+        setIsPlaying(false);
+        return;
+      }
+      
+      synth.current.speak(utterance);
+    } catch (error) {
+      console.error('Error playing announcement:', error);
+      setIsPlaying(false);
+      alert('Error playing announcement. Please try again.');
+    }
   };
 
   const handleStop = () => {

@@ -1124,25 +1124,15 @@ export const useAirportStore = create<AirportStore>()(
       },
       
       updatePassengerFromRealtime: (passenger: Passenger) => {
-        console.log('Updating passenger from real-time/polling:', {
-          id: passenger.id,
-          pnr: passenger.pnr,
-          name: `${passenger.lastName}/${passenger.firstName}`,
-          status: passenger.status,
-          seat: passenger.seat,
-          flightId: passenger.flightId
-        });
         set((state) => {
           const existingIndex = state.passengers.findIndex(p => p.id === passenger.id);
           if (existingIndex >= 0) {
             // Update existing passenger
             const newPassengers = [...state.passengers];
             newPassengers[existingIndex] = passenger;
-            console.log('Passenger updated in store, new passengers count:', newPassengers.length);
             return { passengers: newPassengers };
           } else {
             // Add new passenger
-            console.log('New passenger added to store');
             return { passengers: [...state.passengers, passenger] };
           }
         });
