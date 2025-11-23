@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import type { AppConfig, WindowState } from '../types';
 
 interface OSStore {
@@ -17,7 +18,9 @@ interface OSStore {
   updateWindowSize: (windowId: string, size: { width: number; height: number }) => void;
 }
 
-export const useOSStore = create<OSStore>((set) => ({
+export const useOSStore = create<OSStore>()(
+  persist(
+    (set) => ({
   apps: [],
   windows: [],
   activeWindowId: null,
@@ -100,5 +103,17 @@ export const useOSStore = create<OSStore>((set) => ({
       w.id === windowId ? { ...w, size } : w
     ),
   })),
-}));
+    }),
+    {
+      name: 'os-storage', // localStorage key
+      // Only persist windows, activeWindowId, and zIndexCounter
+      // Don't persist apps as they're registered on app start
+      partialize: (state) => ({
+        windows: state.windows,
+        activeWindowId: state.activeWindowId,
+        zIndexCounter: state.zIndexCounter,
+      }),
+    }
+  )
+);
 
