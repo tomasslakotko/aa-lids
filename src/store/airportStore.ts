@@ -897,10 +897,24 @@ export const useAirportStore = create<AirportStore>()(
         const state = get();
         const passenger = state.passengers.find(p => p.pnr === pnr);
         if (!passenger) {
+          console.error(`[boardPassenger] Passenger not found: ${pnr}`);
           get().addLog(`Cannot board passenger - PNR ${pnr} not found`, 'BOARDING', 'WARNING');
           return false;
         }
+        
+        console.log(`[boardPassenger] Attempting to board:`, {
+          pnr,
+          name: `${passenger.lastName}, ${passenger.firstName}`,
+          status: passenger.status,
+          flightId: passenger.flightId
+        });
+        
         if (passenger.status !== 'CHECKED_IN') {
+          console.error(`[boardPassenger] Passenger not checked in:`, {
+            pnr,
+            status: passenger.status,
+            expected: 'CHECKED_IN'
+          });
           get().addLog(`Cannot board passenger ${passenger.lastName} (${pnr}) - passenger is not checked in (status: ${passenger.status})`, 'BOARDING', 'WARNING');
           return false; 
         }
@@ -911,9 +925,13 @@ export const useAirportStore = create<AirportStore>()(
           )
         }));
         get().addLog(`Passenger ${passenger.lastName} (${pnr}) boarded`, 'BOARDING', 'SUCCESS');
+        console.log(`[boardPassenger] Successfully boarded: ${pnr}`);
+        
         // Sync to database
         if (get().isDatabaseReady) {
-          get().syncToDatabase().catch(() => {});
+          get().syncToDatabase().catch((err) => {
+            console.error(`[boardPassenger] Database sync failed:`, err);
+          });
         }
         return true;
       },

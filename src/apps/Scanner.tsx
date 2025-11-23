@@ -15,6 +15,7 @@ export const ScannerApp = () => {
   const flights = useAirportStore((state) => state.flights);
   const passengers = useAirportStore((state) => state.passengers);
   const boardPassenger = useAirportStore((state) => state.boardPassenger);
+  const checkInPassenger = useAirportStore((state) => state.checkInPassenger);
 
   const selectedFlight = flights.find(f => f.id === selectedFlightId);
 
@@ -33,7 +34,7 @@ export const ScannerApp = () => {
   }, [flightPassengers]);
 
   // Process scanned QR code from boarding pass
-  const processScannedCode = (code: string) => {
+  const processScannedCode = async (code: string) => {
     let pnr: string | null = null;
     let passengerId: string | null = null;
     
@@ -98,6 +99,37 @@ export const ScannerApp = () => {
       return;
     }
     
+    // Auto-check-in if passenger is not checked in yet
+    if (found.status === 'BOOKED') {
+      console.log('Passenger not checked in, auto-checking in...');
+      const checkInResult = await checkInPassenger(found.pnr);
+      if (!checkInResult) {
+        setScanError(`Failed to check in passenger`);
+        setLastScanned({ 
+          name: `${found.lastName}, ${found.firstName}`, 
+          pnr: found.pnr, 
+          success: false 
+        });
+        return;
+      }
+      // Refresh passenger data after check-in
+      const updatedState = useAirportStore.getState();
+      const updatedPassenger = updatedState.passengers.find(p => p.pnr === pnr);
+      if (!updatedPassenger || updatedPassenger.status !== 'CHECKED_IN') {
+        setScanError(`Check-in completed but status is ${updatedPassenger?.status || 'unknown'}`);
+        setLastScanned({ 
+          name: `${found.lastName}, ${found.firstName}`, 
+          pnr: found.pnr, 
+          success: false 
+        });
+        return;
+      }
+      // Update found passenger reference
+      found.status = 'CHECKED_IN';
+      found.seat = updatedPassenger.seat;
+      console.log('Auto-check-in successful, seat assigned:', updatedPassenger.seat);
+    }
+    
     if (found.status !== 'CHECKED_IN') {
       setScanError(`Not checked in (status: ${found.status})`);
       setLastScanned({ 
@@ -109,7 +141,18 @@ export const ScannerApp = () => {
     }
     
     // Auto-board the passenger
+    console.log('Attempting to board passenger:', {
+      pnr: found.pnr,
+      name: `${found.lastName}, ${found.firstName}`,
+      status: found.status,
+      seat: found.seat,
+      flightId: found.flightId,
+      selectedFlightId: selectedFlightId
+    });
+    
     const result = boardPassenger(found.pnr);
+    console.log('Board result:', result);
+    
     if (result) {
       setScanError(null);
       setLastScanned({ 
@@ -120,7 +163,14 @@ export const ScannerApp = () => {
       // Play success sound (optional)
       // Success feedback is visual
     } else {
-      setScanError(`Failed to board`);
+      // Get fresh passenger data to see current status
+      const currentPassenger = passengers.find(p => p.pnr === found.pnr);
+      console.error('Failed to board passenger:', {
+        pnr: found.pnr,
+        currentStatus: currentPassenger?.status,
+        originalStatus: found.status
+      });
+      setScanError(`Failed to board - Status: ${currentPassenger?.status || found.status}`);
       setLastScanned({ 
         name: `${found.lastName}, ${found.firstName}`, 
         pnr: found.pnr, 
@@ -210,8 +260,8 @@ export const ScannerApp = () => {
             qrbox: { width: 300, height: 300 },
             aspectRatio: 1.0,
           },
-          (decodedText) => {
-            processScannedCode(decodedText);
+          async (decodedText) => {
+            await processScannedCode(decodedText);
           },
           (_errorMessage) => {
             // Ignore scanning errors
@@ -228,8 +278,8 @@ export const ScannerApp = () => {
               qrbox: { width: 300, height: 300 },
               aspectRatio: 1.0,
             },
-            (decodedText) => {
-              processScannedCode(decodedText);
+            async (decodedText) => {
+              await processScannedCode(decodedText);
             },
             (_errorMessage) => {
               // Ignore scanning errors
