@@ -33,8 +33,38 @@ export const ScannerApp = () => {
     return { checkedIn, boarded, total };
   }, [flightPassengers]);
 
-  // Process scanned QR code from boarding pass
+  // Process scanned QR code from boarding pass or flight connection
   const processScannedCode = async (code: string) => {
+    // First, check if this is a flight connection QR code
+    try {
+      const qrData = JSON.parse(code);
+      if (qrData.type === 'FLIGHT_CONNECT' && qrData.flightId) {
+        // This is a flight connection QR code
+        console.log('Flight connection QR scanned:', qrData);
+        setSelectedFlightId(qrData.flightId);
+        setScanError(null);
+        setLastScanned({ 
+          name: `Flight ${qrData.flightNumber}`, 
+          pnr: qrData.flightId, 
+          success: true 
+        });
+        // Stop scanning after connecting to flight
+        if (scannerRef.current) {
+          await stopScanner();
+        }
+        return;
+      }
+    } catch (e) {
+      // Not a flight connection QR, continue with passenger boarding pass logic
+    }
+    
+    // If no flight is selected, show error
+    if (!selectedFlightId) {
+      setScanError('Please scan flight connection QR code first');
+      setLastScanned({ name: 'No Flight', pnr: 'NONE', success: false });
+      return;
+    }
+    
     let pnr: string | null = null;
     let passengerId: string | null = null;
     
@@ -388,31 +418,30 @@ export const ScannerApp = () => {
           )}
         </div>
 
-        {/* Flight Selection */}
-        <div className="flex gap-4 items-center">
-          <label className="text-sm font-semibold">Flight:</label>
-          <select
-            value={selectedFlightId}
-            onChange={(e) => {
-              setSelectedFlightId(e.target.value);
-              if (isScanning) {
-                stopScanner();
-              }
-            }}
-            className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-            disabled={isScanning}
-          >
-            <option value="">-- Select Flight --</option>
-            {flights
-              .filter(f => f.status !== 'ARRIVED' && f.status !== 'CANCELLED')
-              .sort((a, b) => a.std.localeCompare(b.std))
-              .map(flight => (
-                <option key={flight.id} value={flight.id}>
-                  {flight.flightNumber} - {flight.origin} → {flight.destination} ({flight.std})
-                </option>
-              ))}
-          </select>
-        </div>
+        {/* Flight Info */}
+        {selectedFlight ? (
+          <div className="flex gap-4 items-center">
+            <label className="text-sm font-semibold">Connected Flight:</label>
+            <div className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white">
+              {selectedFlight.flightNumber} - {selectedFlight.origin} → {selectedFlight.destination} ({selectedFlight.std})
+            </div>
+            <button
+              onClick={() => {
+                setSelectedFlightId('');
+                if (isScanning) {
+                  stopScanner();
+                }
+              }}
+              className="px-3 py-2 bg-red-600 hover:bg-red-700 rounded text-sm"
+            >
+              Disconnect
+            </button>
+          </div>
+        ) : (
+          <div className="bg-yellow-900 border border-yellow-700 rounded px-4 py-2 text-yellow-200 text-sm">
+            <strong>No flight connected.</strong> Scan the flight connection QR code from Boarding Gate app to start scanning boarding passes.
+          </div>
+        )}
 
         {/* Flight Stats */}
         {selectedFlight && (
@@ -442,7 +471,8 @@ export const ScannerApp = () => {
         {!selectedFlightId ? (
           <div className="text-center text-gray-400">
             <Plane size={64} className="mx-auto mb-4 opacity-50" />
-            <p className="text-xl">Please select a flight to start scanning</p>
+            <p className="text-lg mb-2">Scan flight connection QR code first</p>
+            <p className="text-sm text-gray-500">Get the QR code from Boarding Gate app</p>
           </div>
         ) : (
           <>

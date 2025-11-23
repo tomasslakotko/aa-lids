@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { Briefsheet } from '../components/Briefsheet';
 import { Html5Qrcode } from 'html5-qrcode';
+import QRCode from 'react-qr-code';
 
 const BOARDING_STORAGE_KEY = 'boarding-selected-flight';
 
@@ -34,6 +35,7 @@ export const BoardingApp = () => {
   const [selectedPaxId, setSelectedPaxId] = useState<string | null>(null);
   const [gateMsg, setGateMsg] = useState('');
   const [showBriefsheet, setShowBriefsheet] = useState(false);
+  const [showScannerQR, setShowScannerQR] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
@@ -852,6 +854,46 @@ export const BoardingApp = () => {
             <div className="flex items-center gap-1 text-green-600"><div className="w-2 h-2 rounded-full bg-green-500"/> TSCA LDCS ONLINE</div>
          </div>
       </div>
+
+      {/* Scanner QR Code Modal */}
+      {showScannerQR && selectedFlight && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-gray-800">Connect Scanner</h2>
+              <button
+                onClick={() => setShowScannerQR(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            <div className="text-center mb-4">
+              <p className="text-sm text-gray-600 mb-4">
+                Scan this QR code with the Scanner app to connect to flight:
+              </p>
+              <div className="bg-white p-4 rounded border-2 border-gray-300 inline-block">
+                <QRCode
+                  value={JSON.stringify({
+                    type: 'FLIGHT_CONNECT',
+                    flightId: selectedFlight.id,
+                    flightNumber: selectedFlight.flightNumber,
+                    origin: selectedFlight.origin,
+                    destination: selectedFlight.destination,
+                    std: selectedFlight.std
+                  })}
+                  size={256}
+                  style={{ height: "auto", maxWidth: "100%", width: "100%" }}
+                  viewBox={`0 0 256 256`}
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-4">
+                {selectedFlight.flightNumber} - {selectedFlight.origin} → {selectedFlight.destination}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Briefsheet Modal */}
       {showBriefsheet && selectedFlight && (
