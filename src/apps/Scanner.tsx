@@ -469,11 +469,39 @@ export const ScannerApp = () => {
       {/* Scanner Area */}
       <div className="flex-1 flex flex-col items-center justify-center p-4 relative">
         {!selectedFlightId ? (
-          <div className="text-center text-gray-400">
-            <Plane size={64} className="mx-auto mb-4 opacity-50" />
-            <p className="text-lg mb-2">Scan flight connection QR code first</p>
-            <p className="text-sm text-gray-500">Get the QR code from Boarding Gate app</p>
-          </div>
+          <>
+            {/* Always render the scanner element (hidden when not scanning) for iOS compatibility */}
+            <div 
+              id="scanner-qr-reader" 
+              ref={scannerElementRef}
+              className={clsx(
+                "w-full max-w-2xl",
+                !isScanning && "hidden"
+              )}
+            ></div>
+            
+            {!isScanning ? (
+              <div className="text-center text-gray-400">
+                <Plane size={64} className="mx-auto mb-4 opacity-50" />
+                <p className="text-lg mb-2">Scan flight connection QR code first</p>
+                <p className="text-sm text-gray-500 mb-6">Get the QR code from Boarding Gate app</p>
+                <button
+                  onClick={async (e) => {
+                    e.preventDefault();
+                    await startScanner();
+                  }}
+                  className="px-8 py-4 bg-green-600 hover:bg-green-700 rounded-lg text-lg font-bold flex items-center gap-3 mx-auto"
+                >
+                  <Camera size={24} />
+                  Scan Flight QR Code
+                </button>
+              </div>
+            ) : (
+              <p className="mt-4 text-gray-300 text-center">
+                Point camera at flight connection QR code
+              </p>
+            )}
+          </>
         ) : (
           <>
             {/* Always render the scanner element (hidden when not scanning) for iOS compatibility */}
