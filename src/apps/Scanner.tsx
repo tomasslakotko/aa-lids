@@ -257,9 +257,10 @@ export const ScannerApp = () => {
         });
         return;
       }
-      // Update found passenger reference
+      // Update found passenger reference with all updated data
       found.status = 'CHECKED_IN';
       found.seat = updatedPassenger.seat;
+      found.boardingComment = updatedPassenger.boardingComment; // Update comment from database
       console.log('Auto-check-in successful, seat assigned:', updatedPassenger.seat);
     }
     
@@ -273,13 +274,25 @@ export const ScannerApp = () => {
       return;
     }
     
-    // Check if passenger has a boarding comment
-    if (found.boardingComment && found.boardingComment.trim()) {
+    // Check if passenger has a boarding comment - refresh from store to get latest data
+    const currentPassenger = passengers.find(p => p.pnr === found.pnr);
+    const commentToCheck = currentPassenger?.boardingComment || found.boardingComment;
+    
+    console.log('Checking for boarding comment:', {
+      pnr: found.pnr,
+      foundComment: found.boardingComment,
+      currentComment: currentPassenger?.boardingComment,
+      commentToCheck: commentToCheck,
+      hasComment: !!(commentToCheck && commentToCheck.trim())
+    });
+    
+    if (commentToCheck && commentToCheck.trim()) {
+      console.log('Passenger has comment, showing modal');
       // Show comment modal before boarding
       setCommentPassenger({
         name: `${found.lastName}, ${found.firstName}`,
         pnr: found.pnr,
-        comment: found.boardingComment
+        comment: commentToCheck
       });
       setShowCommentModal(true);
       // Don't board yet - wait for acknowledge
