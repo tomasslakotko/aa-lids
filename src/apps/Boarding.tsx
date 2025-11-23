@@ -1,12 +1,13 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useAirportStore } from '../store/airportStore';
 import clsx from 'clsx';
 import { 
   Users, User, ArrowLeft, HelpCircle, 
   Printer, Plus, UserPlus, UserMinus,
-  CheckCircle, MessageSquare, ArrowDown
+  CheckCircle, MessageSquare, ArrowDown, Camera, CameraOff, X
 } from 'lucide-react';
 import { Briefsheet } from '../components/Briefsheet';
+import { Html5Qrcode } from 'html5-qrcode';
 
 const BOARDING_STORAGE_KEY = 'boarding-selected-flight';
 
@@ -33,6 +34,10 @@ export const BoardingApp = () => {
   const [selectedPaxId, setSelectedPaxId] = useState<string | null>(null);
   const [gateMsg, setGateMsg] = useState('');
   const [showBriefsheet, setShowBriefsheet] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const scannerElementRef = useRef<HTMLDivElement | null>(null);
 
   const flights = useAirportStore((state) => state.flights);
   const passengers = useAirportStore((state) => state.passengers);
@@ -213,6 +218,147 @@ export const BoardingApp = () => {
         }
     }
   };
+
+  // Process scanned QR code from boarding pass
+  const processScannedCode = (code: string) => {
+    let pnr: string | null = null;
+    let passengerId: string | null = null;
+    
+    // Try to parse as JSON (QR code from boarding pass)
+    try {
+      const qrData = JSON.parse(code);
+      if (qrData.pnr) {
+        pnr = qrData.pnr.toUpperCase();
+      }
+      if (qrData.passengerId) {
+        passengerId = qrData.passengerId;
+      }
+    } catch (e) {
+      // Not JSON, try to extract PNR from text/barcode format
+      const codeUpper = code.toUpperCase().trim();
+      const pnrMatch = code.match(/\b([A-Z0-9]{6})\b/);
+      if (pnrMatch) {
+        pnr = pnrMatch[1];
+      } else {
+        pnr = codeUpper;
+      }
+    }
+    
+    if (!pnr && !passengerId) {
+      setScanError(`Invalid QR code format: ${code.substring(0, 50)}...`);
+      return;
+    }
+    
+    // Find passenger by PNR or passengerId
+    const found = passengers.find(p => 
+      (pnr && p.pnr === pnr) || 
+      (passengerId && p.id === passengerId)
+    );
+    
+    if (!found) {
+      setScanError(`Passenger not found: ${pnr || passengerId}`);
+      return;
+    }
+    
+    // Check if passenger is on the selected flight
+    if (selectedFlightId && found.flightId !== selectedFlightId) {
+      setScanError(`Passenger is on a different flight. Please select flight ${found.flightId} first.`);
+      return;
+    }
+    
+    // If no flight selected, auto-select the passenger's flight
+    if (!selectedFlightId && found.flightId) {
+      const passengerFlight = flights.find(f => f.id === found.flightId);
+      if (passengerFlight) {
+        setSelectedFlightId(found.flightId);
+        setFlightInput(passengerFlight.flightNumber);
+      }
+    }
+    
+    // Check if passenger can be boarded
+    if (found.status === 'BOARDED') {
+      setScanError(`Passenger ${found.lastName} is already boarded.`);
+      setSelectedPaxId(found.id);
+      return;
+    }
+    
+    if (found.status !== 'CHECKED_IN') {
+      setScanError(`Passenger ${found.lastName} is not checked in (status: ${found.status}). Cannot board.`);
+      setSelectedPaxId(found.id);
+      return;
+    }
+    
+    // Auto-board the passenger
+    const result = boardPassenger(found.pnr);
+    if (result) {
+      setSelectedPaxId(found.id);
+      setScanError(null);
+      // Stop scanning after successful board
+      if (isScanning) {
+        stopScanner();
+      }
+      // Show success message
+      setTimeout(() => {
+        alert(`Passenger ${found.lastName}, ${found.firstName} (${found.pnr}) has been boarded successfully!`);
+      }, 100);
+    } else {
+      setScanError(`Failed to board passenger ${found.lastName}.`);
+    }
+  };
+
+  // Start camera scanner
+  const startScanner = async () => {
+    if (!scannerElementRef.current) return;
+    
+    try {
+      const html5QrCode = new Html5Qrcode(scannerElementRef.current.id);
+      scannerRef.current = html5QrCode;
+      
+      await html5QrCode.start(
+        { facingMode: 'environment' },
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 250 },
+        },
+        (decodedText) => {
+          processScannedCode(decodedText);
+        },
+        (_errorMessage) => {
+          // Ignore scanning errors (they're frequent during scanning)
+        }
+      );
+      
+      setIsScanning(true);
+      setScanError(null);
+    } catch (err: any) {
+      console.error('Scanner error:', err);
+      setScanError(`Failed to start camera: ${err.message}`);
+      setIsScanning(false);
+    }
+  };
+
+  // Stop camera scanner
+  const stopScanner = () => {
+    if (scannerRef.current) {
+      scannerRef.current.stop().then(() => {
+        scannerRef.current?.clear();
+        scannerRef.current = null;
+        setIsScanning(false);
+      }).catch((err) => {
+        console.error('Error stopping scanner:', err);
+        setIsScanning(false);
+      });
+    }
+  };
+
+  // Cleanup scanner on unmount
+  useEffect(() => {
+    return () => {
+      if (scannerRef.current) {
+        stopScanner();
+      }
+    };
+  }, []);
 
   // --- RENDER HELPERS ---
 
@@ -419,10 +565,70 @@ export const BoardingApp = () => {
             {/* Search & Filters */}
             <div className="p-2 border-b border-gray-300 flex gap-2 items-center bg-gray-50">
                <span className="text-gray-600">Search:</span>
-               <input className="border border-gray-400 p-1 w-64 text-xs" placeholder="Name / PNR / Seq" />
+               <input 
+                 className="border border-gray-400 p-1 w-64 text-xs" 
+                 placeholder="Name / PNR / Seq" 
+                 onKeyDown={(e) => {
+                   if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                     processScannedCode(e.currentTarget.value.trim());
+                     e.currentTarget.value = '';
+                   }
+                 }}
+               />
                <button className="bg-gray-200 border border-gray-400 px-3 py-1 rounded hover:bg-gray-300">Search</button>
+               <button
+                 onClick={() => {
+                   if (isScanning) {
+                     stopScanner();
+                   } else {
+                     startScanner();
+                   }
+                 }}
+                 className={clsx(
+                   "flex items-center gap-1 px-3 py-1 rounded border text-xs",
+                   isScanning 
+                     ? "bg-red-200 border-red-400 hover:bg-red-300 text-red-800"
+                     : "bg-blue-200 border-blue-400 hover:bg-blue-300 text-blue-800"
+                 )}
+               >
+                 {isScanning ? (
+                   <>
+                     <CameraOff size={14} /> Stop Scan
+                   </>
+                 ) : (
+                   <>
+                     <Camera size={14} /> Scan QR
+                   </>
+                 )}
+               </button>
+               {scanError && (
+                 <div className="flex items-center gap-2 text-red-600 text-xs">
+                   <span>{scanError}</span>
+                   <button onClick={() => setScanError(null)} className="text-red-800 hover:text-red-900">
+                     <X size={14} />
+                   </button>
+                 </div>
+               )}
                <div className="flex-1 text-right font-bold text-gray-600">Total Paxes: {filteredPassengers.length}</div>
             </div>
+            
+            {/* QR Scanner View */}
+            {isScanning && (
+              <div className="border-b border-gray-300 bg-black p-4 flex flex-col items-center">
+                <div 
+                  id="qr-reader" 
+                  ref={scannerElementRef}
+                  className="w-full max-w-md"
+                ></div>
+                <p className="text-white text-xs mt-2">Point camera at boarding pass QR code</p>
+                <button
+                  onClick={stopScanner}
+                  className="mt-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
+                >
+                  Stop Scanning
+                </button>
+              </div>
+            )}
 
             {/* Tabs */}
             <div className="flex border-b border-gray-400 bg-gray-100 pt-1 px-1 gap-1">
