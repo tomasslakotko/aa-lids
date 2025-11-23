@@ -304,6 +304,50 @@ export const ReservationsApp = () => {
       }
     }
 
+    // --- BAGGAGE (BG) ---
+    // BG1 - Add 1 bag for first passenger
+    // BG2 - Add 2 bags for first passenger
+    // BG1P2 - Add 1 bag for passenger 2
+    else if (cmd.startsWith('BG')) {
+      const rest = cmd.substring(2).trim();
+      let bagCount = 1;
+      let passengerIndex = 0;
+      
+      // Parse BG[NUMBER] or BG[NUMBER]P[PASSENGER]
+      const match = rest.match(/^(\d+)(?:P(\d+))?$/);
+      if (match) {
+        bagCount = parseInt(match[1], 10);
+        if (match[2]) {
+          passengerIndex = parseInt(match[2], 10) - 1; // Convert to 0-based index
+        }
+      } else {
+        // Try to parse just a number
+        const num = parseInt(rest, 10);
+        if (!isNaN(num)) {
+          bagCount = num;
+        }
+      }
+      
+      if (wipPnr.passengers.length === 0) {
+        addLog('NO PASSENGERS IN PNR. ADD NAMES FIRST.');
+      } else if (passengerIndex < 0 || passengerIndex >= wipPnr.passengers.length) {
+        addLog(`INVALID PASSENGER INDEX. USE BG[NUMBER]P[1-${wipPnr.passengers.length}]`);
+      } else {
+        setWipPnr(prev => ({
+          ...prev,
+          passengers: prev.passengers.map((p, idx) => 
+            idx === passengerIndex 
+              ? { ...p, bagCount: (p.bagCount || 0) + bagCount }
+              : p
+          )
+        }));
+        const passenger = wipPnr.passengers[passengerIndex];
+        addLog(`BAGGAGE ADDED: ${bagCount} PC(S) FOR ${passenger.lastName}/${passenger.firstName}`);
+        addLog(`   TOTAL BAGS: ${(wipPnr.passengers[passengerIndex].bagCount || 0) + bagCount}`);
+        addLog(' ');
+      }
+    }
+
     // --- CONTACT (AP) ---
     else if (cmd.startsWith('AP')) {
        const contact = cmd.substring(2).trim();
