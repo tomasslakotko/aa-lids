@@ -806,8 +806,14 @@ export const useAirportStore = create<AirportStore>()(
       boardPassenger: (pnr) => {
         const state = get();
         const passenger = state.passengers.find(p => p.pnr === pnr);
-        if (!passenger) return false;
-        if (passenger.status !== 'CHECKED_IN') return false; 
+        if (!passenger) {
+          get().addLog(`Cannot board passenger - PNR ${pnr} not found`, 'BOARDING', 'WARNING');
+          return false;
+        }
+        if (passenger.status !== 'CHECKED_IN') {
+          get().addLog(`Cannot board passenger ${passenger.lastName} (${pnr}) - passenger is not checked in (status: ${passenger.status})`, 'BOARDING', 'WARNING');
+          return false; 
+        }
 
         set((state) => ({
           passengers: state.passengers.map(p => 
@@ -815,6 +821,10 @@ export const useAirportStore = create<AirportStore>()(
           )
         }));
         get().addLog(`Passenger ${passenger.lastName} (${pnr}) boarded`, 'BOARDING', 'SUCCESS');
+        // Sync to database
+        if (get().isDatabaseReady) {
+          get().syncToDatabase().catch(() => {});
+        }
         return true;
       },
 

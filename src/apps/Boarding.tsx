@@ -91,7 +91,15 @@ export const BoardingApp = () => {
   };
 
   const handleBoardPax = (pnr: string) => {
-    boardPassenger(pnr);
+    const result = boardPassenger(pnr);
+    if (!result) {
+      const passenger = passengers.find(p => p.pnr === pnr);
+      if (passenger) {
+        alert(`Cannot board passenger: Status is ${passenger.status}. Passenger must be CHECKED_IN to board.`);
+      } else {
+        alert(`Passenger with PNR ${pnr} not found.`);
+      }
+    }
   };
 
   const handleGateMessageUpdate = () => {
