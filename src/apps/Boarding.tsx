@@ -308,6 +308,38 @@ export const BoardingApp = () => {
 
   // Start camera scanner
   const startScanner = async () => {
+    // First, request camera permissions explicitly
+    try {
+      // Check if browser supports getUserMedia
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setScanError('Camera access is not supported in this browser. Please use a modern browser.');
+        return;
+      }
+
+      // Request camera permission explicitly
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { facingMode: 'environment' } 
+        });
+        // Stop the stream immediately - we just wanted permission
+        stream.getTracks().forEach(track => track.stop());
+      } catch (permErr: any) {
+        if (permErr.name === 'NotAllowedError' || permErr.name === 'PermissionDeniedError') {
+          setScanError('Camera access denied. Please allow camera access in your browser settings and try again.');
+          return;
+        } else if (permErr.name === 'NotFoundError' || permErr.name === 'DevicesNotFoundError') {
+          setScanError('No camera found. Please connect a camera and try again.');
+          return;
+        } else {
+          setScanError(`Camera error: ${permErr.message || 'Please allow camera access'}`);
+          return;
+        }
+      }
+    } catch (err: any) {
+      setScanError(`Failed to access camera: ${err.message || 'Please allow camera access'}`);
+      return;
+    }
+
     // Set scanning state first so the element gets rendered
     setIsScanning(true);
     setScanError(null);
@@ -341,7 +373,15 @@ export const BoardingApp = () => {
         );
       } catch (err: any) {
         console.error('Scanner error:', err);
-        setScanError(`Failed to start camera: ${err.message || 'Please allow camera access'}`);
+        let errorMsg = 'Failed to start camera';
+        if (err.message) {
+          errorMsg = err.message;
+        } else if (err.name === 'NotAllowedError') {
+          errorMsg = 'Camera access denied. Please allow camera access and try again.';
+        } else if (err.name === 'NotFoundError') {
+          errorMsg = 'No camera found. Please connect a camera.';
+        }
+        setScanError(errorMsg);
         setIsScanning(false);
         if (scannerRef.current) {
           scannerRef.current = null;
