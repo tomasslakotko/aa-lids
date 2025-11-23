@@ -6,6 +6,7 @@ import {
   Printer, Plus, UserPlus, UserMinus,
   CheckCircle, MessageSquare
 } from 'lucide-react';
+import { Briefsheet } from '../components/Briefsheet';
 
 // Mock helper for gender (random for demo since we don't store it)
 const getGender = (name: string) => {
@@ -25,6 +26,7 @@ export const BoardingApp = () => {
   const [activeTab, setActiveTab] = useState<'ALL' | 'CHECKED_IN' | 'BOARDED' | 'WAITLIST'>('ALL');
   const [selectedPaxId, setSelectedPaxId] = useState<string | null>(null);
   const [gateMsg, setGateMsg] = useState('');
+  const [showBriefsheet, setShowBriefsheet] = useState(false);
 
   const flights = useAirportStore((state) => state.flights);
   const passengers = useAirportStore((state) => state.passengers);
@@ -272,7 +274,18 @@ export const BoardingApp = () => {
       {/* 3. TOOLBAR */}
       <div className="bg-gray-100 p-1 border-b border-gray-400 flex gap-2">
          <button onClick={() => setSelectedFlightId('')} className="flex items-center gap-1 px-3 py-1 bg-gray-200 border border-gray-400 rounded hover:bg-gray-300 text-xs"><ArrowLeft size={12} /> Back</button>
-         <button className="flex items-center gap-1 px-3 py-1 bg-gray-200 border border-gray-400 rounded hover:bg-gray-300 text-xs"><Printer size={12} /> Briefsheet</button>
+         <button 
+           onClick={() => {
+             if (selectedFlight) {
+               setShowBriefsheet(true);
+             } else {
+               alert('Please select a flight first');
+             }
+           }}
+           className="flex items-center gap-1 px-3 py-1 bg-gray-200 border border-gray-400 rounded hover:bg-gray-300 text-xs"
+         >
+           <Printer size={12} /> Briefsheet
+         </button>
          <div className="flex-1 flex justify-center gap-2">
             {/* Gate Message Input */}
             <div className="flex items-center gap-2 bg-white border border-gray-300 rounded px-2">
@@ -492,6 +505,19 @@ export const BoardingApp = () => {
             <div className="flex items-center gap-1 text-green-600"><div className="w-2 h-2 rounded-full bg-green-500"/> TSCA LDCS ONLINE</div>
          </div>
       </div>
+
+      {/* Briefsheet Modal */}
+      {showBriefsheet && selectedFlight && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-2xl w-full h-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+            <Briefsheet 
+              flight={selectedFlight} 
+              passengers={passengers}
+              onClose={() => setShowBriefsheet(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
