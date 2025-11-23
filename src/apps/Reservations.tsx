@@ -9,7 +9,7 @@ const generatePNR = () => Math.random().toString(36).substring(2, 8).toUpperCase
 // Types for the PNR being built
 interface WipPNR {
   segments: Flight[];
-  passengers: { lastName: string; firstName: string; title: string; type?: 'REVENUE' | 'STAFF_DUTY' | 'STAFF_SBY'; staffId?: string }[];
+  passengers: { lastName: string; firstName: string; title: string; type?: 'REVENUE' | 'STAFF_DUTY' | 'STAFF_SBY'; staffId?: string; bagCount?: number }[];
   contacts: string[];
   ticketStatus: string;
   tstStored: boolean; // Whether FXP has been run (TST stored)
@@ -44,6 +44,7 @@ export const ReservationsApp = () => {
   const passengers = useAirportStore((state) => state.passengers);
   const emails = useAirportStore((state) => state.emails);
   const createBooking = useAirportStore((state) => state.createBooking);
+  const updatePassengerDetails = useAirportStore((state) => state.updatePassengerDetails);
   const sendEmailConfirmation = useAirportStore((state) => state.sendEmailConfirmation);
   const outputRef = useRef<HTMLDivElement>(null);
 
@@ -829,12 +830,26 @@ export const ReservationsApp = () => {
        } else {
          const newPnr = generatePNR();
          
-         // Commit to Store
-         wipPnr.passengers.forEach(p => {
-            wipPnr.segments.forEach(s => {
-               createBooking(newPnr, p.lastName, p.firstName, s.id, p.type || 'REVENUE', p.staffId);
-            });
-         });
+        // Commit to Store
+        wipPnr.passengers.forEach(p => {
+           wipPnr.segments.forEach(s => {
+              createBooking(newPnr, p.lastName, p.firstName, s.id, p.type || 'REVENUE', p.staffId);
+           });
+        });
+        
+        // Update baggage after a short delay to ensure passengers are created
+        setTimeout(() => {
+          wipPnr.passengers.forEach(p => {
+            if (p.bagCount && p.bagCount > 0) {
+              // Update all passengers with this PNR and name
+              // updatePassengerDetails updates all passengers with matching PNR
+              updatePassengerDetails(newPnr, { 
+                bagCount: p.bagCount, 
+                hasBags: true 
+              });
+            }
+          });
+        }, 100);
 
          addLog(' ');
          addLog(`RP/RIX1A0988/RIX1A0988            AA/SU  ${new Date().toDateString()}   ${newPnr}`);
