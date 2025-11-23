@@ -622,6 +622,30 @@ export const CheckInApp = () => {
       // Find passenger email from previous emails
       const passengerEmail = emails.find((e: any) => e.pnr === foundPassenger.pnr)?.to || '';
       
+      // Prepare receipt items - combine ticket and services
+      const receiptItems: Array<{description: string; quantity: number; unitPrice: number; total: number}> = [];
+      if (ticketPrice > 0) {
+        receiptItems.push({
+          description: 'Ticket',
+          quantity: 1,
+          unitPrice: ticketPrice,
+          total: ticketPrice
+        });
+      }
+      if (paymentItems.length > 0) {
+        receiptItems.push(...paymentItems);
+      }
+      if (receiptItems.length === 0) {
+        receiptItems.push({
+          description: 'Service Payment',
+          quantity: 1,
+          unitPrice: paymentAmount,
+          total: paymentAmount
+        });
+      }
+      
+      const subtotal = receiptItems.reduce((sum, item) => sum + item.total, 0);
+      
       // Generate receipt HTML
       const { generateReceiptHtml } = await import('../services/mailgun-receipt');
       const receiptHtml = generateReceiptHtml({
@@ -629,13 +653,8 @@ export const CheckInApp = () => {
         pnr: foundPassenger.pnr,
         receiptNumber,
         date: receiptDate,
-        items: paymentItems.length > 0 ? paymentItems : [{
-          description: ticketPrice > 0 ? 'Ticket' : 'Service Payment',
-          quantity: 1,
-          unitPrice: paymentAmount,
-          total: paymentAmount
-        }],
-        subtotal: paymentAmount,
+        items: receiptItems,
+        subtotal: subtotal,
         tax: 0,
         total: paymentAmount,
         currency: 'EUR',
