@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAirportStore } from '../store/airportStore';
 import type { Passenger } from '../store/airportStore';
 import clsx from 'clsx';
@@ -41,20 +41,21 @@ export const GateScreenApp = () => {
   }, [selectedFlight?.status, selectedFlight?.gateMessage, selectedFlight?.gate, selectedFlight?.etd, selectedFlight?.id]);
 
   // Filter passengers for the standby/upgrade list
-  // Realistically, we'd filter by 'Standby' or 'Upgrade Requested'. 
-  // For simulation, we'll show random passengers or those marked as SBY.
-  const standbyList = selectedFlight 
-    ? passengers
-        .filter(p => p.flightId === selectedFlight.id && (p.passengerType === 'STAFF_SBY' || p.seat === 'SBY' || p.seat === 'REQ'))
-        .slice(0, 10) 
-    : [];
+  // Use useMemo to ensure lists update when passengers change (including real-time updates)
+  const standbyList = useMemo(() => {
+    if (!selectedFlight) return [];
+    return passengers
+      .filter(p => p.flightId === selectedFlight.id && (p.passengerType === 'STAFF_SBY' || p.seat === 'SBY' || p.seat === 'REQ'))
+      .slice(0, 10);
+  }, [passengers, selectedFlight?.id]);
 
-  // Fake Upgrade list (taking some economy pax)
-  const upgradeList = selectedFlight
-    ? passengers
-        .filter(p => p.flightId === selectedFlight.id && p.status === 'CHECKED_IN' && !p.seat.startsWith('1'))
-        .slice(0, 5)
-    : [];
+  // Upgrade list (economy passengers who are checked in and not in business class)
+  const upgradeList = useMemo(() => {
+    if (!selectedFlight) return [];
+    return passengers
+      .filter(p => p.flightId === selectedFlight.id && p.status === 'CHECKED_IN' && !p.seat.startsWith('1'))
+      .slice(0, 5);
+  }, [passengers, selectedFlight?.id]);
 
   if (!selectedFlight) {
     return (
