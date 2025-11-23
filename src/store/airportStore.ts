@@ -729,6 +729,10 @@ export const useAirportStore = create<AirportStore>()(
           )
         }));
         get().addLog(`Passenger details updated for ${pnr}`, 'CHECK-IN', 'INFO');
+        // Sync to database
+        if (get().isDatabaseReady) {
+          get().syncToDatabase().catch(() => {});
+        }
       },
 
       offloadPassenger: (pnr) => {
