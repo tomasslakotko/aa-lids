@@ -196,23 +196,54 @@ export const ScannerApp = () => {
           }
         } catch (err: any) {
           console.error('Scanner error:', err);
+          console.error('Error details:', {
+            name: err.name,
+            message: err.message,
+            stack: err.stack
+          });
+          
           let errorMsg = 'Failed to start camera';
           
           // Check for specific error types
           if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-            errorMsg = 'Camera access denied. Please allow camera access in your browser settings.';
+            errorMsg = 'Camera access denied. Please allow camera access in your browser settings and try again.';
           } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-            errorMsg = 'No camera found. Please connect a camera.';
+            errorMsg = 'No camera found. Please connect a camera and try again.';
           } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
-            errorMsg = 'Camera is already in use by another application.';
+            errorMsg = 'Camera is already in use by another application. Please close other apps using the camera.';
           } else if (err.name === 'OverconstrainedError') {
-            errorMsg = 'Camera does not support required settings.';
+            errorMsg = 'Camera does not support required settings. Trying alternative camera...';
+            // Try with simpler constraints
+            try {
+              const html5QrCode = new Html5Qrcode(scannerElementRef.current.id || 'scanner-qr-reader');
+              scannerRef.current = html5QrCode;
+              await html5QrCode.start(
+                { facingMode: 'user' },
+                {
+                  fps: 5,
+                  qrbox: { width: 250, height: 250 },
+                },
+                (decodedText) => {
+                  processScannedCode(decodedText);
+                },
+                (_errorMessage) => {}
+              );
+              return; // Success with fallback
+            } catch (fallbackErr: any) {
+              errorMsg = 'Camera does not support required settings. Please try a different device.';
+            }
           } else if (err.message) {
-            // Check if error message indicates browser support issue
-            if (err.message.includes('getUserMedia') || err.message.includes('not supported') || err.message.includes('not available')) {
-              errorMsg = 'Camera access is not supported. Please use Chrome, Safari, Firefox, or Edge with HTTPS.';
+            const msg = err.message.toLowerCase();
+            if (msg.includes('permission') || msg.includes('denied') || msg.includes('not allowed')) {
+              errorMsg = 'Camera access denied. Please allow camera access in your browser settings.';
+            } else if (msg.includes('not found') || msg.includes('no device')) {
+              errorMsg = 'No camera found. Please connect a camera.';
+            } else if (msg.includes('in use') || msg.includes('busy')) {
+              errorMsg = 'Camera is already in use. Please close other apps using the camera.';
+            } else if (msg.includes('https') || msg.includes('secure')) {
+              errorMsg = 'Camera access requires HTTPS. Please access this app via HTTPS or localhost.';
             } else {
-              errorMsg = err.message;
+              errorMsg = `Camera error: ${err.message}`;
             }
           }
           
@@ -222,7 +253,9 @@ export const ScannerApp = () => {
             try {
               scannerRef.current.stop().catch(() => {});
               scannerRef.current.clear();
-            } catch (e) {}
+            } catch (e) {
+              console.error('Error cleaning up scanner:', e);
+            }
             scannerRef.current = null;
           }
         }
@@ -366,9 +399,17 @@ export const ScannerApp = () => {
 
         {/* Error Message */}
         {scanError && (
-          <div className="absolute bottom-4 left-4 right-4 bg-red-600 border border-red-700 rounded-lg p-4 flex items-center gap-3">
+          <div className="absolute bottom-4 left-4 right-4 bg-red-600 border border-red-700 rounded-lg p-4 flex items-center gap-3 z-50">
             <AlertCircle size={24} />
-            <span className="flex-1">{scanError}</span>
+            <div className="flex-1">
+              <div className="font-bold mb-1">Camera Error</div>
+              <div className="text-sm">{scanError}</div>
+              {scanError.includes('denied') && (
+                <div className="text-xs mt-2 opacity-90">
+                  Tip: Check your browser's address bar for a camera icon and click it to allow access.
+                </div>
+              )}
+            </div>
             <button onClick={() => setScanError(null)} className="text-red-200 hover:text-white">
               <X size={20} />
             </button>
