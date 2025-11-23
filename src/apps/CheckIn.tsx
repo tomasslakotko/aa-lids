@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAirportStore } from '../store/airportStore';
-import { Check, Plane, Luggage, Printer, FileText } from 'lucide-react';
+import { Check, Plane, Luggage, Printer, FileText, DollarSign, Plus, Minus, AlertCircle, History, MessageSquare, Star, X } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import clsx from 'clsx';
 
@@ -402,13 +402,33 @@ export const CheckInApp = () => {
   const [editWeight, setEditWeight] = useState('');
   const [customBagWeights, setCustomBagWeights] = useState<Record<string, number>>({});
   const [showPrintModal, setShowPrintModal] = useState(false);
+  
+  // New feature modals
+  const [showSbyModal, setShowSbyModal] = useState(false);
+  const [showCommentModal, setShowCommentModal] = useState(false);
+  const [showLogsModal, setShowLogsModal] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showServicesModal, setShowServicesModal] = useState(false);
+  
+  // Payment state
+  const [ticketPrice, setTicketPrice] = useState<number>(0);
+  const [paymentAmount, setPaymentAmount] = useState<number>(0);
+  const [paymentMethod, setPaymentMethod] = useState<string>('CASH');
+  
+  // Services state
+  const [extraBags, setExtraBags] = useState<number>(0);
+  const [loungeAccess, setLoungeAccess] = useState<boolean>(false);
+  const [upgradeClass, setUpgradeClass] = useState<string>('');
 
   // Store Data
   const passengers = useAirportStore((state) => state.passengers);
   const flights = useAirportStore((state) => state.flights);
+  const logs = useAirportStore((state) => state.logs);
   const checkInPassenger = useAirportStore((state) => state.checkInPassenger);
   const cancelCheckIn = useAirportStore((state) => state.cancelCheckIn);
   const updatePassengerDetails = useAirportStore((state) => state.updatePassengerDetails);
+  const addLog = useAirportStore((state) => state.addLog);
+  const upgradePassenger = useAirportStore((state) => state.upgradePassenger);
 
   // Derived Data
   const foundPassenger = selectedPnr ? passengers.find(p => p.pnr === selectedPnr) : null;
@@ -552,6 +572,69 @@ export const CheckInApp = () => {
        });
     }
   };
+  
+  // New handlers
+  const handleSetSby = () => {
+    if (foundPassenger) {
+      updatePassengerDetails(foundPassenger.pnr, { passengerType: 'STAFF_SBY' });
+      addLog(`Set SBY status for ${foundPassenger.lastName} ${foundPassenger.firstName} (${foundPassenger.pnr})`, 'CHECK_IN');
+      setShowSbyModal(false);
+      alert('SBY STATUS SET');
+    }
+  };
+  
+  const handleSaveComment = () => {
+    if (foundPassenger) {
+      const comment = (document.getElementById('comment-text') as HTMLTextAreaElement)?.value || '';
+      updatePassengerDetails(foundPassenger.pnr, { boardingComment: comment || undefined });
+      addLog(`Added comment for ${foundPassenger.lastName} ${foundPassenger.firstName} (${foundPassenger.pnr})`, 'CHECK_IN');
+      setShowCommentModal(false);
+      alert('COMMENT SAVED');
+    }
+  };
+  
+  const handleProcessPayment = () => {
+    if (foundPassenger && paymentAmount > 0) {
+      addLog(`Payment processed: ${paymentMethod} - ${paymentAmount.toFixed(2)} EUR for ${foundPassenger.lastName} ${foundPassenger.firstName} (${foundPassenger.pnr})`, 'CHECK_IN');
+      setShowPaymentModal(false);
+      setPaymentAmount(0);
+      alert(`PAYMENT PROCESSED: ${paymentAmount.toFixed(2)} EUR via ${paymentMethod}`);
+    }
+  };
+  
+  const handleSaveServices = () => {
+    if (foundPassenger) {
+      const updates: any = {};
+      if (extraBags > 0) {
+        updates.bagCount = foundPassenger.bagCount + extraBags;
+        updates.hasBags = true;
+        addLog(`Added ${extraBags} extra bag(s) for ${foundPassenger.lastName} ${foundPassenger.firstName} (${foundPassenger.pnr})`, 'CHECK_IN');
+      }
+      if (loungeAccess) {
+        updates.loungeAccess = true;
+        addLog(`Lounge access granted for ${foundPassenger.lastName} ${foundPassenger.firstName} (${foundPassenger.pnr})`, 'CHECK_IN');
+      }
+      if (upgradeClass) {
+        // Convert upgrade class to J or Y format
+        const classCode = upgradeClass === 'BUSINESS' || upgradeClass === 'FIRST' ? 'J' : 'Y';
+        upgradePassenger(foundPassenger.pnr, classCode);
+        addLog(`Upgraded ${foundPassenger.lastName} ${foundPassenger.firstName} (${foundPassenger.pnr}) to ${upgradeClass}`, 'CHECK_IN');
+      }
+      if (Object.keys(updates).length > 0) {
+        updatePassengerDetails(foundPassenger.pnr, updates);
+      }
+      setShowServicesModal(false);
+      setExtraBags(0);
+      setLoungeAccess(false);
+      setUpgradeClass('');
+      alert('SERVICES APPLIED');
+    }
+  };
+  
+  // Get passenger logs
+  const passengerLogs = foundPassenger 
+    ? logs.filter((log) => log.message?.includes(foundPassenger.pnr))
+    : [];
 
   return (
     <div className="h-full w-full bg-[#FDFBF7] text-xs font-sans flex flex-col select-none text-gray-800">
@@ -606,6 +689,12 @@ export const CheckInApp = () => {
             
             <div className="bg-gradient-to-b from-[#EBE9E3] to-[#D4D0C8] px-2 py-1 font-bold border-b border-white border-t border-[#A0A0A0] text-gray-700">Menus</div>
             <div className="p-2 space-y-1">
+                <button disabled={!foundPassenger} onClick={() => setShowSbyModal(true)} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Set SBY Status</span></button>
+                <button disabled={!foundPassenger} onClick={() => setShowCommentModal(true)} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Add Comment</span></button>
+                <button disabled={!foundPassenger} onClick={() => setShowLogsModal(true)} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>View Logs</span></button>
+                <button disabled={!foundPassenger} onClick={() => setShowPaymentModal(true)} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Price & Payment</span></button>
+                <button disabled={!foundPassenger} onClick={() => setShowServicesModal(true)} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Services</span></button>
+                <div className="h-px bg-gray-300 my-1"></div>
                 <button disabled={!foundPassenger} onClick={handleUpgrade} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Upgrade Class</span><span className="text-gray-400">SF4</span></button>
                 <button disabled={!foundPassenger} onClick={handleDowngrade} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Downgrade Class</span></button>
                 <button disabled={!foundPassenger} onClick={handleFqtv} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Add FQTV</span></button>
@@ -1125,6 +1214,264 @@ export const CheckInApp = () => {
          <span>NUM</span>
          <div className="ml-auto">Terminal 1 / Desk 14</div>
       </div>
+      
+      {/* SBY Status Modal */}
+      {showSbyModal && foundPassenger && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <AlertCircle className="text-orange-600" size={24} />
+                Set SBY Status
+              </h2>
+              <button onClick={() => setShowSbyModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="mb-4">
+              <p className="text-sm text-gray-600 mb-2">Passenger: <strong>{foundPassenger.lastName} {foundPassenger.firstName}</strong></p>
+              <p className="text-xs text-gray-500">PNR: {foundPassenger.pnr}</p>
+            </div>
+            <div className="bg-yellow-50 border border-yellow-300 rounded p-3 mb-4">
+              <p className="text-sm text-yellow-800">Setting SBY (Standby) status will mark this passenger as standby. They will be boarded only if space is available.</p>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <LegacyButton onClick={() => setShowSbyModal(false)}>Cancel</LegacyButton>
+              <LegacyButton primary onClick={handleSetSby}>Set SBY Status</LegacyButton>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Comment Modal */}
+      {showCommentModal && foundPassenger && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <MessageSquare className="text-blue-600" size={24} />
+                Add Comment
+              </h2>
+              <button onClick={() => setShowCommentModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="mb-4">
+              <p className="text-sm text-gray-600 mb-2">Passenger: <strong>{foundPassenger.lastName} {foundPassenger.firstName}</strong></p>
+              <p className="text-xs text-gray-500">PNR: {foundPassenger.pnr}</p>
+            </div>
+            <div className="mb-4">
+              <label className="block text-sm font-bold mb-2">Comment:</label>
+              <textarea
+                id="comment-text"
+                defaultValue={foundPassenger.boardingComment || ''}
+                className="w-full border border-gray-300 rounded p-2 text-sm h-32 resize-none"
+                placeholder="Enter comment about this passenger..."
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <LegacyButton onClick={() => setShowCommentModal(false)}>Cancel</LegacyButton>
+              <LegacyButton primary onClick={handleSaveComment}>Save Comment</LegacyButton>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Logs Modal */}
+      {showLogsModal && foundPassenger && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 p-6 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <History className="text-gray-600" size={24} />
+                Passenger Logs
+              </h2>
+              <button onClick={() => setShowLogsModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="mb-4">
+              <p className="text-sm text-gray-600 mb-2">Passenger: <strong>{foundPassenger.lastName} {foundPassenger.firstName}</strong></p>
+              <p className="text-xs text-gray-500">PNR: {foundPassenger.pnr}</p>
+            </div>
+            <div className="flex-1 overflow-auto border border-gray-300 rounded p-4 bg-gray-50">
+              {passengerLogs.length > 0 ? (
+                <div className="space-y-2">
+                  {passengerLogs.map((log, idx) => (
+                    <div key={idx} className="bg-white border border-gray-200 rounded p-2 text-xs">
+                      <div className="flex justify-between items-start mb-1">
+                        <span className="font-bold text-gray-700">{new Date(log.timestamp).toLocaleString()}</span>
+                        <span className="text-gray-500">{log.type}</span>
+                      </div>
+                      <div className="text-gray-800">{log.message}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center text-gray-400 py-8">No logs found for this passenger</div>
+              )}
+            </div>
+            <div className="flex justify-end mt-4">
+              <LegacyButton onClick={() => setShowLogsModal(false)}>Close</LegacyButton>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Payment Modal */}
+      {showPaymentModal && foundPassenger && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <DollarSign className="text-green-600" size={24} />
+                Price & Payment
+              </h2>
+              <button onClick={() => setShowPaymentModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="mb-4">
+              <p className="text-sm text-gray-600 mb-2">Passenger: <strong>{foundPassenger.lastName} {foundPassenger.firstName}</strong></p>
+              <p className="text-xs text-gray-500">PNR: {foundPassenger.pnr}</p>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold mb-1">Ticket Price (EUR):</label>
+                <input
+                  type="number"
+                  value={ticketPrice}
+                  onChange={(e) => setTicketPrice(parseFloat(e.target.value) || 0)}
+                  className="w-full border border-gray-300 rounded p-2 text-sm"
+                  placeholder="0.00"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold mb-1">Payment Amount (EUR):</label>
+                <input
+                  type="number"
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(parseFloat(e.target.value) || 0)}
+                  className="w-full border border-gray-300 rounded p-2 text-sm"
+                  placeholder="0.00"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold mb-1">Payment Method:</label>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  className="w-full border border-gray-300 rounded p-2 text-sm"
+                >
+                  <option value="CASH">Cash</option>
+                  <option value="CARD">Card</option>
+                  <option value="VOUCHER">Voucher</option>
+                  <option value="REFUND">Refund</option>
+                </select>
+              </div>
+              {paymentAmount > 0 && ticketPrice > 0 && (
+                <div className="bg-blue-50 border border-blue-200 rounded p-3">
+                  <div className="flex justify-between text-sm mb-1">
+                    <span>Price:</span>
+                    <span className="font-bold">{ticketPrice.toFixed(2)} EUR</span>
+                  </div>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span>Payment:</span>
+                    <span className="font-bold">{paymentAmount.toFixed(2)} EUR</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-bold border-t border-blue-300 pt-1 mt-1">
+                    <span>Change:</span>
+                    <span className={paymentAmount >= ticketPrice ? 'text-green-600' : 'text-red-600'}>
+                      {(paymentAmount - ticketPrice).toFixed(2)} EUR
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-2 justify-end mt-4">
+              <LegacyButton onClick={() => setShowPaymentModal(false)}>Cancel</LegacyButton>
+              <LegacyButton primary onClick={handleProcessPayment} disabled={paymentAmount <= 0}>
+                Process Payment
+              </LegacyButton>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Services Modal */}
+      {showServicesModal && foundPassenger && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <Star className="text-purple-600" size={24} />
+                Additional Services
+              </h2>
+              <button onClick={() => setShowServicesModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="mb-4">
+              <p className="text-sm text-gray-600 mb-2">Passenger: <strong>{foundPassenger.lastName} {foundPassenger.firstName}</strong></p>
+              <p className="text-xs text-gray-500">PNR: {foundPassenger.pnr}</p>
+            </div>
+            <div className="space-y-4">
+              <div className="border border-gray-300 rounded p-3">
+                <label className="block text-sm font-bold mb-2">Extra Bags:</label>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setExtraBags(Math.max(0, extraBags - 1))}
+                    className="w-8 h-8 border border-gray-300 rounded flex items-center justify-center hover:bg-gray-100"
+                  >
+                    <Minus size={16} />
+                  </button>
+                  <span className="w-12 text-center font-bold">{extraBags}</span>
+                  <button
+                    onClick={() => setExtraBags(extraBags + 1)}
+                    className="w-8 h-8 border border-gray-300 rounded flex items-center justify-center hover:bg-gray-100"
+                  >
+                    <Plus size={16} />
+                  </button>
+                  <span className="text-sm text-gray-600 ml-2">bags (23 KG each)</span>
+                </div>
+              </div>
+              
+              <div className="border border-gray-300 rounded p-3">
+                <label className="block text-sm font-bold mb-2 flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={loungeAccess}
+                    onChange={(e) => setLoungeAccess(e.target.checked)}
+                    className="w-4 h-4"
+                  />
+                  Lounge Access
+                </label>
+                <p className="text-xs text-gray-500 mt-1">Grant access to airport lounge</p>
+              </div>
+              
+              <div className="border border-gray-300 rounded p-3">
+                <label className="block text-sm font-bold mb-2">Upgrade Class:</label>
+                <select
+                  value={upgradeClass}
+                  onChange={(e) => setUpgradeClass(e.target.value)}
+                  className="w-full border border-gray-300 rounded p-2 text-sm"
+                >
+                  <option value="">No upgrade</option>
+                  <option value="BUSINESS">Business Class</option>
+                  <option value="FIRST">First Class</option>
+                  <option value="PREMIUM_ECONOMY">Premium Economy</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end mt-4">
+              <LegacyButton onClick={() => setShowServicesModal(false)}>Cancel</LegacyButton>
+              <LegacyButton primary onClick={handleSaveServices}>
+                Apply Services
+              </LegacyButton>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
