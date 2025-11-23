@@ -46,6 +46,7 @@ export interface Passenger {
   staffId?: string; // Employee ID for staff
   securityStatus?: SecurityStatus; // Security screening status
   securityNote?: string; // Security officer notes
+  boardingComment?: string; // Boarding gate agent comment/notes
 }
 
 export interface LogEntry {

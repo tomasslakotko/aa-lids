@@ -43,6 +43,7 @@ export const BoardingApp = () => {
 
   const flights = useAirportStore((state) => state.flights);
   const passengers = useAirportStore((state) => state.passengers);
+  const updatePassengerDetails = useAirportStore((state) => state.updatePassengerDetails);
   
   // Persist selectedFlightId to localStorage whenever it changes
   useEffect(() => {
@@ -73,7 +74,6 @@ export const BoardingApp = () => {
   const updateGateMessage = useAirportStore((state) => state.updateGateMessage);
   const offloadPassenger = useAirportStore((state) => state.offloadPassenger);
   const addNoRecPassenger = useAirportStore((state) => state.addNoRecPassenger);
-  const updatePassengerDetails = useAirportStore((state) => state.updatePassengerDetails);
 
   const selectedFlight = flights.find(f => f.id === selectedFlightId);
   
@@ -615,6 +615,22 @@ export const BoardingApp = () => {
               <ArrowDown size={14}/> DEboard
             </button>
             <button onClick={handleAddNoRec} className="text-left px-2 py-2 bg-gray-100 border border-gray-400 hover:bg-blue-50 rounded flex items-center gap-2"><Plus size={14}/> Add NoRec</button>
+            <div className="h-px bg-gray-300 my-1"></div>
+            <button 
+              onClick={() => {
+                if (!selectedPaxId) return alert('Select a passenger first');
+                const pax = passengers.find(p => p.id === selectedPaxId);
+                if (pax) {
+                  const comment = prompt('Enter boarding comment/notes:', pax.boardingComment || '');
+                  if (comment !== null) {
+                    updatePassengerDetails(pax.pnr, { boardingComment: comment || undefined });
+                  }
+                }
+              }}
+              className="text-left px-2 py-2 bg-gray-100 border border-gray-400 hover:bg-blue-50 rounded flex items-center gap-2"
+            >
+              <MessageSquare size={14}/> Add Comment
+            </button>
          </div>
 
          {/* CENTER LIST */}

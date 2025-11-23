@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useAirportStore } from '../store/airportStore';
 import { Html5Qrcode } from 'html5-qrcode';
-import { Camera, CameraOff, Plane, CheckCircle, X, AlertCircle } from 'lucide-react';
+import { Camera, CameraOff, Plane, CheckCircle, X, AlertCircle, FileText } from 'lucide-react';
 import clsx from 'clsx';
 
 export const ScannerApp = () => {
@@ -9,6 +9,8 @@ export const ScannerApp = () => {
   const [isScanning, setIsScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const [lastScanned, setLastScanned] = useState<{ name: string; pnr: string; success: boolean } | null>(null);
+  const [showCommentModal, setShowCommentModal] = useState(false);
+  const [commentPassenger, setCommentPassenger] = useState<{ name: string; pnr: string; comment: string } | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const scannerElementRef = useRef<HTMLDivElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -267,6 +269,19 @@ export const ScannerApp = () => {
         pnr: found.pnr, 
         success: false 
       });
+      return;
+    }
+    
+    // Check if passenger has a boarding comment
+    if (found.boardingComment && found.boardingComment.trim()) {
+      // Show comment modal before boarding
+      setCommentPassenger({
+        name: `${found.lastName}, ${found.firstName}`,
+        pnr: found.pnr,
+        comment: found.boardingComment
+      });
+      setShowCommentModal(true);
+      // Don't board yet - wait for acknowledge
       return;
     }
     
@@ -679,6 +694,64 @@ export const ScannerApp = () => {
           </div>
         )}
       </div>
+
+      {/* Comment Modal */}
+      {showCommentModal && commentPassenger && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <FileText size={24} className="text-blue-600" />
+              <h2 className="text-xl font-bold text-gray-800">Boarding Comment</h2>
+            </div>
+            <div className="mb-4">
+              <div className="text-sm text-gray-600 mb-2">Passenger:</div>
+              <div className="font-bold text-lg text-gray-900">{commentPassenger.name}</div>
+              <div className="text-xs text-gray-500 mt-1">PNR: {commentPassenger.pnr}</div>
+            </div>
+            <div className="mb-6">
+              <div className="text-sm text-gray-600 mb-2">Comment:</div>
+              <div className="bg-yellow-50 border-2 border-yellow-300 rounded-lg p-4 text-gray-800 whitespace-pre-wrap">
+                {commentPassenger.comment}
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  // Acknowledge and board the passenger
+                  const found = passengers.find(p => p.pnr === commentPassenger.pnr);
+                  if (found) {
+                    const result = boardPassenger(found.pnr);
+                    if (result) {
+                      setScanError(null);
+                      setLastScanned({ 
+                        name: commentPassenger.name, 
+                        pnr: commentPassenger.pnr, 
+                        success: true 
+                      });
+                      playSuccessSound().catch(console.error);
+                    }
+                  }
+                  setShowCommentModal(false);
+                  setCommentPassenger(null);
+                }}
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center gap-2"
+              >
+                <CheckCircle size={20} />
+                Acknowledge & Board
+              </button>
+              <button
+                onClick={() => {
+                  setShowCommentModal(false);
+                  setCommentPassenger(null);
+                }}
+                className="px-4 py-3 bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold rounded-lg"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

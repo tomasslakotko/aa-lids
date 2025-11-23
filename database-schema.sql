@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS passengers (
   staff_id TEXT,
   security_status TEXT,
   security_note TEXT,
+  boarding_comment TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
