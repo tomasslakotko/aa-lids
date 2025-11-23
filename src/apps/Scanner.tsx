@@ -136,9 +136,24 @@ export const ScannerApp = () => {
       return;
     }
 
-    // Check if browser supports getUserMedia
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setScanError('Camera access is not supported in this browser.');
+    // Check if browser supports camera access
+    // Try multiple ways to check for camera support
+    const hasGetUserMedia = !!(
+      navigator.mediaDevices?.getUserMedia ||
+      (navigator as any).getUserMedia ||
+      (navigator as any).webkitGetUserMedia ||
+      (navigator as any).mozGetUserMedia ||
+      (navigator as any).msGetUserMedia
+    );
+
+    if (!hasGetUserMedia) {
+      setScanError('Camera access is not supported in this browser. Please use a modern browser (Chrome, Safari, Firefox, Edge) with HTTPS.');
+      return;
+    }
+
+    // Check if we're in a secure context (HTTPS or localhost)
+    if (!window.isSecureContext && window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      setScanError('Camera access requires HTTPS. Please access this app via HTTPS or localhost.');
       return;
     }
 
@@ -160,29 +175,59 @@ export const ScannerApp = () => {
           const html5QrCode = new Html5Qrcode(elementId);
           scannerRef.current = html5QrCode;
           
-          await html5QrCode.start(
-            { facingMode: 'environment' },
-            {
-              fps: 10,
-              qrbox: { width: 300, height: 300 },
-              aspectRatio: 1.0,
-            },
-            (decodedText) => {
-              processScannedCode(decodedText);
-            },
-            (_errorMessage) => {
-              // Ignore scanning errors
+          // Try to start with environment camera first, fallback to any camera
+          let cameraConfig = { facingMode: 'environment' };
+          try {
+            await html5QrCode.start(
+              cameraConfig,
+              {
+                fps: 10,
+                qrbox: { width: 300, height: 300 },
+                aspectRatio: 1.0,
+              },
+              (decodedText) => {
+                processScannedCode(decodedText);
+              },
+              (_errorMessage) => {
+                // Ignore scanning errors
+              }
+            );
+          } catch (envErr: any) {
+            // If environment camera fails, try any available camera
+            if (envErr.name === 'NotFoundError' || envErr.message?.includes('environment')) {
+              console.log('Environment camera not found, trying any available camera');
+              cameraConfig = { facingMode: 'user' };
+              await html5QrCode.start(
+                cameraConfig,
+                {
+                  fps: 10,
+                  qrbox: { width: 300, height: 300 },
+                  aspectRatio: 1.0,
+                },
+                (decodedText) => {
+                  processScannedCode(decodedText);
+                },
+                (_errorMessage) => {
+                  // Ignore scanning errors
+                }
+              );
+            } else {
+              throw envErr;
             }
-          );
+          }
         } catch (err: any) {
           console.error('Scanner error:', err);
           let errorMsg = 'Failed to start camera';
           if (err.message) {
             errorMsg = err.message;
           } else if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-            errorMsg = 'Camera access denied. Please allow camera access.';
+            errorMsg = 'Camera access denied. Please allow camera access in your browser settings.';
           } else if (err.name === 'NotFoundError') {
-            errorMsg = 'No camera found.';
+            errorMsg = 'No camera found. Please connect a camera.';
+          } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+            errorMsg = 'Camera is already in use by another application.';
+          } else if (err.name === 'OverconstrainedError') {
+            errorMsg = 'Camera does not support required settings.';
           }
           setScanError(errorMsg);
           setIsScanning(false);
