@@ -53,7 +53,8 @@ function dbRowToPassenger(row: any): Passenger {
     passengerType: row.passenger_type as Passenger['passengerType'] || undefined,
     staffId: row.staff_id || undefined,
     securityStatus: row.security_status as Passenger['securityStatus'] || undefined,
-    securityNote: row.security_note || undefined
+    securityNote: row.security_note || undefined,
+    boardingComment: row.boarding_comment || undefined
   };
 }
 
