@@ -140,7 +140,55 @@ export const ScannerApp = () => {
     setIsScanning(true);
     setScanError(null);
 
-    // Wait for element to be in DOM
+    // For iOS, try requesting permission directly first
+    // This must happen in the same user gesture
+    console.log('Starting camera permission request...');
+    console.log('Is secure context:', window.isSecureContext);
+    console.log('Protocol:', window.location.protocol);
+    console.log('Hostname:', window.location.hostname);
+    
+    let stream: MediaStream | null = null;
+    try {
+      // Check if we're in a secure context (HTTPS or localhost)
+      if (!window.isSecureContext && window.location.protocol !== 'https:' && 
+          window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        setIsScanning(false);
+        setScanError('Camera requires HTTPS. Please use HTTPS or access via localhost. For iPad/iPhone, you may need to deploy to a server with HTTPS.');
+        console.error('Not a secure context - camera will not work');
+        return;
+      }
+      
+      // Request camera permission directly - this triggers the iOS permission prompt
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        console.log('Calling getUserMedia...');
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { facingMode: 'environment' } 
+        });
+        console.log('getUserMedia succeeded, got stream');
+        // Stop the stream immediately - we just wanted permission
+        stream.getTracks().forEach(track => track.stop());
+      } else {
+        setIsScanning(false);
+        setScanError('Camera API not available. Please use a modern browser.');
+        return;
+      }
+    } catch (permErr: any) {
+      console.error('Permission error:', permErr);
+      console.error('Error name:', permErr.name);
+      console.error('Error message:', permErr.message);
+      // Permission was denied or error occurred
+      setIsScanning(false);
+      if (permErr.name === 'NotAllowedError' || permErr.name === 'PermissionDeniedError') {
+        setScanError('Camera access denied. Please allow camera access in your browser settings.');
+      } else if (permErr.name === 'NotFoundError') {
+        setScanError('No camera found. Please connect a camera.');
+      } else {
+        setScanError(`Camera error: ${permErr.message || 'Please allow camera access'}`);
+      }
+      return;
+    }
+
+    // Now start the scanner with the element
     const element = scannerElementRef.current;
     if (!element) {
       setIsScanning(false);
@@ -153,8 +201,7 @@ export const ScannerApp = () => {
       const html5QrCode = new Html5Qrcode(elementId);
       scannerRef.current = html5QrCode;
       
-      // Start the scanner - html5-qrcode will handle permission request
-      // On iOS, this must be called from user gesture (button click)
+      // Start the scanner - permission is already granted
       try {
         await html5QrCode.start(
           { facingMode: 'environment' },
@@ -171,82 +218,71 @@ export const ScannerApp = () => {
           }
         );
       } catch (envErr: any) {
-        console.log('Environment camera error:', envErr);
         // If environment camera fails, try user-facing camera (front camera)
-        if (envErr.name === 'NotFoundError' || envErr.message?.includes('environment') || envErr.message?.includes('not found') || envErr.message?.includes('not available')) {
+        if (envErr.name === 'NotFoundError' || envErr.message?.includes('environment') || envErr.message?.includes('not found')) {
           console.log('Environment camera not found, trying user-facing camera');
-          try {
-            await html5QrCode.start(
-              { facingMode: 'user' },
-              {
-                fps: 10,
-                qrbox: { width: 300, height: 300 },
-                aspectRatio: 1.0,
-              },
-              (decodedText) => {
-                processScannedCode(decodedText);
-              },
-              (_errorMessage) => {
-                // Ignore scanning errors
-              }
-            );
-          } catch (userErr: any) {
-            console.log('User camera also failed:', userErr);
-            throw userErr;
-          }
+          await html5QrCode.start(
+            { facingMode: 'user' },
+            {
+              fps: 10,
+              qrbox: { width: 300, height: 300 },
+              aspectRatio: 1.0,
+            },
+            (decodedText) => {
+              processScannedCode(decodedText);
+            },
+            (_errorMessage) => {
+              // Ignore scanning errors
+            }
+          );
         } else {
           throw envErr;
         }
       }
     } catch (err: any) {
-      console.error('Scanner error:', err);
-      console.error('Error details:', {
-        name: err.name,
-        message: err.message,
-        stack: err.stack,
-        toString: err.toString()
-      });
-      
-      let errorMsg = 'Failed to start camera';
-      
-      // Check for specific error types
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        errorMsg = 'Camera access denied. Please allow camera access in your browser settings and try again.';
-      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-        errorMsg = 'No camera found. Please connect a camera and try again.';
-      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
-        errorMsg = 'Camera is already in use by another application. Please close other apps using the camera.';
-      } else if (err.name === 'OverconstrainedError') {
-        errorMsg = 'Camera does not support required settings. Please try a different device.';
-      } else if (err.message) {
-        const msg = err.message.toLowerCase();
-        if (msg.includes('permission') || msg.includes('denied') || msg.includes('not allowed')) {
-          errorMsg = 'Camera access denied. Please allow camera access in your browser settings.';
-        } else if (msg.includes('not found') || msg.includes('no device')) {
-          errorMsg = 'No camera found. Please connect a camera.';
-        } else if (msg.includes('in use') || msg.includes('busy')) {
-          errorMsg = 'Camera is already in use. Please close other apps using the camera.';
-        } else if (msg.includes('https') || msg.includes('secure')) {
-          errorMsg = 'Camera access requires HTTPS. Please access this app via HTTPS or localhost.';
-        } else {
-          errorMsg = `Camera error: ${err.message}`;
+        console.error('Scanner error:', err);
+        console.error('Error details:', {
+          name: err.name,
+          message: err.message,
+          stack: err.stack
+        });
+        
+        let errorMsg = 'Failed to start camera';
+        
+        // Check for specific error types
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          errorMsg = 'Camera access denied. Please allow camera access in your browser settings and try again.';
+        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+          errorMsg = 'No camera found. Please connect a camera and try again.';
+        } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+          errorMsg = 'Camera is already in use by another application. Please close other apps using the camera.';
+        } else if (err.message) {
+          const msg = err.message.toLowerCase();
+          if (msg.includes('permission') || msg.includes('denied') || msg.includes('not allowed')) {
+            errorMsg = 'Camera access denied. Please allow camera access in your browser settings.';
+          } else if (msg.includes('not found') || msg.includes('no device')) {
+            errorMsg = 'No camera found. Please connect a camera.';
+          } else if (msg.includes('in use') || msg.includes('busy')) {
+            errorMsg = 'Camera is already in use. Please close other apps using the camera.';
+          } else if (msg.includes('https') || msg.includes('secure')) {
+            errorMsg = 'Camera access requires HTTPS. Please access this app via HTTPS or localhost.';
+          } else {
+            errorMsg = `Camera error: ${err.message}`;
+          }
+        }
+        
+        setScanError(errorMsg);
+        setIsScanning(false);
+        if (scannerRef.current) {
+          try {
+            scannerRef.current.stop().catch(() => {});
+            scannerRef.current.clear();
+          } catch (e) {
+            console.error('Error cleaning up scanner:', e);
+          }
+          scannerRef.current = null;
         }
       }
-      
-      // Show detailed error for debugging
-      console.error('Final error message:', errorMsg);
-      setScanError(`${errorMsg}\n\nDebug: Check browser console for details.`);
-      setIsScanning(false);
-      if (scannerRef.current) {
-        try {
-          scannerRef.current.stop().catch(() => {});
-          scannerRef.current.clear();
-        } catch (e) {
-          console.error('Error cleaning up scanner:', e);
-        }
-        scannerRef.current = null;
-      }
-    }
   };
 
   // Stop camera scanner
