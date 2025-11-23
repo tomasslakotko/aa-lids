@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAirportStore } from '../store/airportStore';
 import type { Flight } from '../store/airportStore';
+import { getMailgunFromAddress, generateBookingConfirmationHtml } from '../services/mailgun';
 
 // Helper to generate PNR
 const generatePNR = () => Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -41,7 +42,9 @@ export const ReservationsApp = () => {
 
   const flights = useAirportStore((state) => state.flights);
   const passengers = useAirportStore((state) => state.passengers);
+  const emails = useAirportStore((state) => state.emails);
   const createBooking = useAirportStore((state) => state.createBooking);
+  const sendEmailConfirmation = useAirportStore((state) => state.sendEmailConfirmation);
   const outputRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -62,22 +65,28 @@ export const ReservationsApp = () => {
       addLog('** AMADEUS AVAILABILITY - AN **');
       addLog(`RP/RIX1A0988/RIX1A0988   ${new Date().toDateString()}`);
       
-      // Basic parsing: AN[DATE][ORG][DEST] or AN[ORG][DEST] or just AN (List all)
+      // Basic parsing: AN[DATE][ORG][DEST] or AN[ORG][DEST] or AN[ORG] or just AN (List all)
       // Regex to extract Origin (3 chars) and Dest (3 chars) from end of string
       // e.g. ANRIXJFK -> Org: RIX, Dest: JFK
       // e.g. AN10NOVRIXJFK -> Org: RIX, Dest: JFK
+      // e.g. ANRIX -> Org: RIX (all departures from RIX)
+      // e.g. AN -> Show all flights for today
       
       let origin = '';
       let dest = '';
       
-      // Heuristic: Look for last 6 characters being 2 airport codes
+      // Parse command
       if (cmd.length >= 8) {
+         // Look for route pattern (last 6 chars = 2 airport codes)
          const potentialRoute = cmd.slice(-6);
          origin = potentialRoute.slice(0, 3);
          dest = potentialRoute.slice(3, 6);
+      } else if (cmd.length > 2 && cmd.length <= 5) {
+         // ANRIX or ANRIX -> Origin only
+         origin = cmd.substring(2).toUpperCase();
       } else if (cmd.length === 2) {
-        // Just AN -> Show all departing from RIX (Hub)
-        origin = 'RIX';
+        // Just AN -> Show all flights for today (no filter)
+        // origin and dest remain empty
       }
 
       // Filter Direct Flights
@@ -94,12 +103,28 @@ export const ReservationsApp = () => {
          
          leg1Candidates.forEach(l1 => {
             // Find flights from l1.destination to Final Dest (Leg 2)
-            // Must depart AFTER Leg 1 arrives (let's assume +2 hours for simplicity of generating logic)
-            const leg2Candidates = flights.filter(f => 
-               f.origin === l1.destination && 
-               f.destination === dest &&
-               f.std > l1.etd // Simple string compare works for HH:MM if in same day
-            );
+            // Must depart AFTER Leg 1 arrives with minimum connection time (1.5 hours)
+            const leg2Candidates = flights.filter(f => {
+               if (f.origin !== l1.destination || f.destination !== dest) return false;
+               
+               // Calculate connection time
+               const [l1Hour, l1Min] = l1.etd.split(':').map(Number);
+               const [l2Hour, l2Min] = f.std.split(':').map(Number);
+               
+               // Assume flight duration of ~2 hours for leg 1 (can be adjusted)
+               const l1ArrivalHour = l1Hour + 2;
+               const l1ArrivalMin = l1Min;
+               
+               // Calculate time difference in minutes
+               const l1ArrivalMinutes = l1ArrivalHour * 60 + l1ArrivalMin;
+               const l2DepartMinutes = l2Hour * 60 + l2Min;
+               
+               // Minimum connection time: 90 minutes (1.5 hours)
+               const connectionTime = l2DepartMinutes - l1ArrivalMinutes;
+               
+               // Allow connections within same day (positive time) with at least 90 min
+               return connectionTime >= 90 && connectionTime <= 480; // Max 8 hours connection
+            });
 
             leg2Candidates.forEach(l2 => {
                foundFlights.push({ flight: l1, type: 'CONNECTING', connection: l2 });
@@ -122,18 +147,31 @@ export const ReservationsApp = () => {
       if (foundFlights.length === 0) {
         addLog('NO FLIGHTS FOUND');
       } else {
-        foundFlights.slice(0, 10).forEach((item, i) => {
+        // Show header if displaying all flights
+        if (!origin && !dest) {
+          addLog(`TOTAL FLIGHTS FOUND: ${foundFlights.length}`);
+          addLog('FLT  CLS  ORG  DST  STD  ETD  GATE  A/C');
+          addLog('---  ---  ---  ---  ---  ---  ----  ---');
+        }
+        
+        // Limit display to 50 flights when showing all
+        const displayLimit = (!origin && !dest) ? 50 : 10;
+        foundFlights.slice(0, displayLimit).forEach((item, i) => {
            const f = item.flight;
            const idx = i + 1;
            
            if (item.type === 'DIRECT') {
-             addLog(`${idx}  ${f.flightNumber} J9 C9 Y9 ${f.origin} ${f.destination} ${f.std} ${f.etd} E0/${f.aircraft}`);
+             addLog(`${idx.toString().padStart(3)}  ${f.flightNumber.padEnd(6)} J9 C9 Y9 ${f.origin} ${f.destination} ${f.std} ${f.etd} ${f.gate.padEnd(4)} ${f.aircraft}`);
            } else if (item.connection) {
              const c = item.connection;
-             addLog(`${idx}  ${f.flightNumber} J9 Y9 ${f.origin} ${f.destination} ${f.std} ${f.etd} E0/${f.aircraft}  *CXN`);
-             addLog(`    ${c.flightNumber} J9 Y9 ${c.origin} ${c.destination} ${c.std} ${c.etd} E0/${c.aircraft}`);
+             addLog(`${idx.toString().padStart(3)}  ${f.flightNumber.padEnd(6)} J9 Y9 ${f.origin} ${f.destination} ${f.std} ${f.etd} ${f.gate.padEnd(4)} ${f.aircraft}  *CXN`);
+             addLog(`     ${c.flightNumber.padEnd(6)} J9 Y9 ${c.origin} ${c.destination} ${c.std} ${c.etd} ${c.gate.padEnd(4)} ${c.aircraft}`);
            }
         });
+        
+        if (foundFlights.length > displayLimit) {
+          addLog(`... (${foundFlights.length - displayLimit} more flights - refine search)`);
+        }
       }
       addLog(' ');
     }
@@ -808,8 +846,324 @@ export const ReservationsApp = () => {
          addLog(`  ${lineIdx} TK OK`);
          addLog(' ');
          
+         // Generate and send email confirmation if email address exists
+         const emailAddresses = wipPnr.contacts.filter(c => c.includes('@'));
+         if (emailAddresses.length > 0) {
+           emailAddresses.forEach(email => {
+             // Generate ticket number
+             const ticketNumber = `257-${Math.floor(Math.random() * 10000000000)}`;
+             
+             // Prepare flight data for HTML template
+             const flightData = wipPnr.segments.map((s, idx) => {
+               const flight = flights.find(f => f.id === s.id);
+               if (!flight) return null;
+               
+               // Calculate arrival time (assume 2 hours for short flights, 3-4 for longer)
+               const [depHour, depMin] = flight.std.split(':').map(Number);
+               const flightDuration = flight.destination === 'JFK' || flight.destination === 'LAX' || flight.destination === 'BKK' || flight.destination === 'DOH' ? 8 : 2;
+               const arrHour = (depHour + flightDuration) % 24;
+               const arrMin = depMin;
+               const arrivalTime = `${arrHour.toString().padStart(2, '0')}:${arrMin.toString().padStart(2, '0')}`;
+               
+               // Use today's date for departure, same or next day for arrival
+               const today = new Date();
+               const departureDate = today.toISOString().split('T')[0];
+               const arrivalDate = depHour + flightDuration >= 24 
+                 ? new Date(today.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+                 : departureDate;
+               
+               return {
+                 flightNumber: s.flightNumber,
+                 departureDate,
+                 departureTime: flight.std,
+                 arrivalDate,
+                 arrivalTime,
+                 origin: flight.origin,
+                 originCity: flight.originCity || flight.origin,
+                 destination: flight.destination,
+                 destinationCity: flight.destinationCity || flight.destination,
+                 gate: flight.gate || 'TBA',
+                 bookingClass: 'Economy Class',
+                 baggage: '1 PC'
+               };
+             }).filter(f => f !== null) as Array<{
+               flightNumber: string;
+               departureDate: string;
+               departureTime: string;
+               arrivalDate: string;
+               arrivalTime: string;
+               origin: string;
+               originCity: string;
+               destination: string;
+               destinationCity: string;
+               gate: string;
+               bookingClass: string;
+               baggage: string;
+             }>;
+             
+             // Generate HTML email
+             const htmlContent = generateBookingConfirmationHtml({
+               pnr: newPnr,
+               ticketNumber,
+               passengerName: `${wipPnr.passengers[0].lastName} / ${wipPnr.passengers[0].firstName} ${wipPnr.passengers[0].title}`,
+               passengers: wipPnr.passengers,
+               flights: flightData,
+               fare: wipPnr.pricing ? {
+                 baseFare: wipPnr.pricing.baseFare,
+                 tax: wipPnr.pricing.tax,
+                 fees: wipPnr.pricing.fees,
+                 total: wipPnr.pricing.total,
+                 currency: 'EUR'
+               } : null,
+               formOfPayment: wipPnr.formOfPayment ? `CA${wipPnr.formOfPayment.substring(wipPnr.formOfPayment.length - 4).padStart(16, 'X')}` : undefined,
+               issuedBy: 'Reservation Department',
+               issueDate: new Date().toISOString().split('T')[0],
+               issuePlace: 'RIX1A0988'
+             });
+             
+             // Plain text version (fallback)
+             let textContent = `Dear ${wipPnr.passengers[0].firstName} ${wipPnr.passengers[0].lastName},\n\n`;
+             textContent += 'Thank you for your booking.\n\n';
+             textContent += `BOOKING REFERENCE: ${newPnr}\n`;
+             textContent += `ELECTRONIC TICKET NUMBER: ${ticketNumber}\n\n`;
+             textContent += 'FLIGHT DETAILS:\n';
+             flightData.forEach((f, idx) => {
+               textContent += `  ${f.flightNumber}: ${f.originCity} (${f.origin}) → ${f.destinationCity} (${f.destination})\n`;
+               textContent += `  Departure: ${f.departureDate} ${f.departureTime} | Arrival: ${f.arrivalDate} ${f.arrivalTime}\n`;
+               textContent += `  Gate: ${f.gate} | Class: ${f.bookingClass} | Baggage: ${f.baggage}\n\n`;
+             });
+             if (wipPnr.pricing) {
+               textContent += 'FARE DETAILS:\n';
+               textContent += `  Fare: EUR ${wipPnr.pricing.baseFare.toFixed(2)}\n`;
+               textContent += `  Tax, Fee, Charge: EUR ${(wipPnr.pricing.tax + wipPnr.pricing.fees).toFixed(2)}\n`;
+               textContent += `  Total: EUR ${wipPnr.pricing.total.toFixed(2)}\n\n`;
+             }
+             textContent += 'For any questions, please contact Reservation Department.\n';
+             textContent += 'Phone: +371 67280422 | Email: reservations@airport.com\n';
+             
+             // Get Mailgun from address for display
+             const mailgunFromAddress = getMailgunFromAddress();
+             
+             // Send email via store (uses Mailgun domain for "from" address)
+             addLog(' ');
+             addLog('*** EMAIL CONFIRMATION QUEUED ***');
+             addLog(`TO: ${email}`);
+             addLog(`FROM: ${mailgunFromAddress}`);
+             addLog(`SUBJECT: Flight Booking Confirmation - PNR ${newPnr}`);
+             addLog(`STATUS: SENDING...`);
+             addLog(' ');
+             
+             // Send email asynchronously via Mailgun with HTML content
+             sendEmailConfirmation(
+               newPnr,
+               email,
+               `Flight Booking Confirmation - PNR ${newPnr}`,
+               textContent,
+               htmlContent
+             ).then((emailId) => {
+               // Update terminal with result
+               addLog(`EMAIL ID: ${emailId}`);
+               addLog(`STATUS: SENT`);
+               addLog(`SENT AT: ${new Date().toLocaleString()}`);
+               addLog('Email has been sent via Mailgun.');
+               addLog('Customer should receive confirmation within 1-2 minutes.');
+               addLog(' ');
+             }).catch((error: any) => {
+               addLog(`ERROR: ${error.message || 'Failed to send email'}`);
+               addLog('Email sending failed. Please check Mailgun configuration.');
+               addLog(' ');
+             });
+           });
+         } else {
+           addLog('NOTE: No email address provided. Email confirmation not sent.');
+           addLog('      Use APE-EMAIL@DOMAIN.COM to add email for confirmation.');
+         }
+         
          setWipPnr({ segments: [], passengers: [], contacts: [], ticketStatus: '', tstStored: false, pricing: null, ssrs: [], formOfPayment: '', ancillaryPriced: false });
        }
+    }
+
+    // --- TEST EMAIL (TESTEMAIL) ---
+    else if (cmd.startsWith('TESTEMAIL')) {
+      const parts = cmd.split(' ');
+      const testEmail = parts.length > 1 ? parts[1] : 'test@example.com';
+      
+      // Validate email format
+      if (!testEmail.includes('@')) {
+        addLog('INVALID EMAIL ADDRESS');
+        addLog('Usage: TESTEMAIL user@example.com');
+      } else {
+        const testPnr = 'TEST' + Math.random().toString(36).substring(2, 6).toUpperCase();
+        const mailgunFromAddress = getMailgunFromAddress();
+        
+        // Build test email content
+        let testEmailContent = 'Hello,\n\n';
+        testEmailContent += 'This is a test email from the Air Baltic Airport Operating System.\n\n';
+        testEmailContent += 'TEST DETAILS:\n';
+        testEmailContent += `  Test PNR: ${testPnr}\n`;
+        testEmailContent += `  Sent at: ${new Date().toLocaleString()}\n`;
+        testEmailContent += `  From: ${mailgunFromAddress}\n\n`;
+        testEmailContent += 'If you received this email, your Mailgun integration is working correctly!\n\n';
+        testEmailContent += 'Best regards,\n';
+        testEmailContent += 'Reservation Department';
+        
+        addLog(' ');
+        addLog('*** SENDING TEST EMAIL ***');
+        addLog(`TO: ${testEmail}`);
+        addLog(`FROM: ${mailgunFromAddress}`);
+        addLog(`SUBJECT: Test Email - Mailgun Integration`);
+        addLog(`STATUS: SENDING...`);
+        addLog(' ');
+        
+        // Send test email via Mailgun
+        sendEmailConfirmation(
+          testPnr,
+          testEmail,
+          'Test Email - Mailgun Integration',
+          testEmailContent
+        ).then((emailId) => {
+          addLog(`EMAIL ID: ${emailId}`);
+          addLog(`STATUS: SENT`);
+          addLog(`SENT AT: ${new Date().toLocaleString()}`);
+          addLog('Test email has been sent via Mailgun.');
+          addLog('Please check your inbox (and spam folder).');
+          addLog(' ');
+        }).catch((error: any) => {
+          addLog(`ERROR: ${error.message || 'Failed to send test email'}`);
+          addLog('Email sending failed. Please check Mailgun configuration.');
+          addLog('Verify VITE_MAILGUN_API_KEY and VITE_MAILGUN_DOMAIN in .env file.');
+          addLog(' ');
+        });
+      }
+    }
+
+    // --- RESEND EMAIL (RESEND) ---
+    else if (cmd.startsWith('RESEND')) {
+      const parts = cmd.split(' ');
+      const pnrToResend = parts.length > 1 ? parts[1].toUpperCase() : '';
+      
+      if (!pnrToResend) {
+        addLog('INVALID COMMAND');
+        addLog('Usage: RESEND [PNR]');
+        addLog('Example: RESEND ABC123');
+      } else {
+        // Find passengers with this PNR
+        const pnrPassengers = passengers.filter(p => p.pnr === pnrToResend);
+        
+        if (pnrPassengers.length === 0) {
+          addLog(`NO BOOKING FOUND FOR PNR: ${pnrToResend}`);
+        } else {
+          // Find original email
+          const originalEmail = emails.find(e => e.pnr === pnrToResend && e.status === 'SENT');
+          
+          if (!originalEmail) {
+            addLog(`NO EMAIL RECORD FOUND FOR PNR: ${pnrToResend}`);
+            addLog('Email may not have been sent originally.');
+          } else {
+            // Get unique flights for this PNR
+            const uniqueFlightIds = [...new Set(pnrPassengers.map(p => p.flightId))];
+            const pnrFlights = uniqueFlightIds.map(id => flights.find(f => f.id === id)).filter(f => f !== undefined) as Flight[];
+            
+            if (pnrFlights.length === 0) {
+              addLog('NO FLIGHT DATA FOUND FOR THIS BOOKING');
+            } else {
+              // Generate ticket number (use same format)
+              const ticketNumber = `257-${Math.floor(Math.random() * 10000000000)}`;
+              
+              // Prepare flight data for HTML template
+              const flightData = pnrFlights.map((flight) => {
+                // Calculate arrival time
+                const [depHour, depMin] = flight.std.split(':').map(Number);
+                const flightDuration = flight.destination === 'JFK' || flight.destination === 'LAX' || flight.destination === 'BKK' || flight.destination === 'DOH' ? 8 : 2;
+                const arrHour = (depHour + flightDuration) % 24;
+                const arrMin = depMin;
+                const arrivalTime = `${arrHour.toString().padStart(2, '0')}:${arrMin.toString().padStart(2, '0')}`;
+                
+                const today = new Date();
+                const departureDate = today.toISOString().split('T')[0];
+                const arrivalDate = depHour + flightDuration >= 24 
+                  ? new Date(today.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+                  : departureDate;
+                
+                return {
+                  flightNumber: flight.flightNumber,
+                  departureDate,
+                  departureTime: flight.std,
+                  arrivalDate,
+                  arrivalTime,
+                  origin: flight.origin,
+                  originCity: flight.originCity || flight.origin,
+                  destination: flight.destination,
+                  destinationCity: flight.destinationCity || flight.destination,
+                  gate: flight.gate || 'TBA',
+                  bookingClass: 'Economy Class',
+                  baggage: '1 PC'
+                };
+              });
+              
+              // Get first passenger for name
+              const firstPassenger = pnrPassengers[0];
+              const passengerName = `${firstPassenger.lastName} / ${firstPassenger.firstName} ${firstPassenger.title || 'MR'}`;
+              
+              // Generate HTML email
+              const htmlContent = generateBookingConfirmationHtml({
+                pnr: pnrToResend,
+                ticketNumber,
+                passengerName,
+                flights: flightData,
+                fare: null, // Pricing not stored, so we can't resend it
+                issuedBy: 'Reservation Department',
+                issueDate: new Date().toISOString().split('T')[0],
+                issuePlace: 'RIX1A0988'
+              });
+              
+              // Plain text version
+              let textContent = `Dear ${firstPassenger.firstName} ${firstPassenger.lastName},\n\n`;
+              textContent += 'This is a resend of your booking confirmation.\n\n';
+              textContent += `BOOKING REFERENCE: ${pnrToResend}\n`;
+              textContent += `ELECTRONIC TICKET NUMBER: ${ticketNumber}\n\n`;
+              textContent += 'FLIGHT DETAILS:\n';
+              flightData.forEach((f) => {
+                textContent += `  ${f.flightNumber}: ${f.originCity} (${f.origin}) → ${f.destinationCity} (${f.destination})\n`;
+                textContent += `  Departure: ${f.departureDate} ${f.departureTime} | Arrival: ${f.arrivalDate} ${f.arrivalTime}\n`;
+                textContent += `  Gate: ${f.gate} | Class: ${f.bookingClass} | Baggage: ${f.baggage}\n\n`;
+              });
+              textContent += 'For any questions, please contact Reservation Department.\n';
+              textContent += 'Phone: +371 67280422 | Email: reservations@airport.com\n';
+              
+              const mailgunFromAddress = getMailgunFromAddress();
+              
+              addLog(' ');
+              addLog('*** RESENDING EMAIL CONFIRMATION ***');
+              addLog(`PNR: ${pnrToResend}`);
+              addLog(`TO: ${originalEmail.to}`);
+              addLog(`FROM: ${mailgunFromAddress}`);
+              addLog(`SUBJECT: Flight Booking Confirmation - PNR ${pnrToResend} (Resent)`);
+              addLog(`STATUS: SENDING...`);
+              addLog(' ');
+              
+              // Resend email
+              sendEmailConfirmation(
+                pnrToResend,
+                originalEmail.to,
+                `Flight Booking Confirmation - PNR ${pnrToResend} (Resent)`,
+                textContent,
+                htmlContent
+              ).then((emailId) => {
+                addLog(`EMAIL ID: ${emailId}`);
+                addLog(`STATUS: SENT`);
+                addLog(`SENT AT: ${new Date().toLocaleString()}`);
+                addLog('Email has been resent via Mailgun.');
+                addLog(' ');
+              }).catch((error: any) => {
+                addLog(`ERROR: ${error.message || 'Failed to resend email'}`);
+                addLog('Email resending failed. Please check Mailgun configuration.');
+                addLog(' ');
+              });
+            }
+          }
+        }
+      }
     }
 
     // --- CLEAR (CL) ---
@@ -820,7 +1174,9 @@ export const ReservationsApp = () => {
     // --- HELP ---
     else if (cmd === 'HELP') {
       addLog('COMMANDS:');
-      addLog('  AN.......Check Availability (e.g. AN RIXJFK)');
+      addLog('  AN.......Check Availability - Show all flights for today');
+      addLog('  ANRIX....Show all flights departing from RIX');
+      addLog('  ANRIXJFK.Show flights from RIX to JFK');
       addLog('  SS1Y1....Sell 1 Seat Y class Line 1');
       addLog('  NM1....../... Add Name (NM1DOE/JOHN)');
       addLog('  SD1....../... Staff Duty (SD1DOE/JOHN MR/EMP12345)');
@@ -850,6 +1206,8 @@ export const ReservationsApp = () => {
       addLog('  TKOK.....Ticketing OK');
       addLog('  ER.......End & Retrieve (Save PNR)');
       addLog('  RT[PNR]..Retrieve Reservation (e.g. RTAN24NO)');
+      addLog('  RESEND...Resend Email Confirmation (RESEND [PNR])');
+      addLog('  TESTEMAIL.Send Test Email (TESTEMAIL user@example.com)');
       addLog('  CL.......Clear Screen');
     } 
     

@@ -23,6 +23,7 @@ export interface Flight {
 
 export type PassengerStatus = 'BOOKED' | 'CHECKED_IN' | 'BOARDED';
 export type PassengerType = 'REVENUE' | 'STAFF_DUTY' | 'STAFF_SBY';
+export type SecurityStatus = 'PENDING' | 'CLEARED' | 'FLAGGED' | 'ESCORT_REQUIRED';
 
 export interface Passenger {
   id: string;
@@ -41,6 +42,8 @@ export interface Passenger {
   expiryDate?: string;
   passengerType?: PassengerType; // Staff duty or standby
   staffId?: string; // Employee ID for staff
+  securityStatus?: SecurityStatus; // Security screening status
+  securityNote?: string; // Security officer notes
 }
 
 export interface LogEntry {
@@ -74,12 +77,24 @@ export interface Complaint {
   resolution?: string;
 }
 
+export interface EmailConfirmation {
+  id: string;
+  pnr: string;
+  to: string;
+  from: string;
+  subject: string;
+  sentAt: string;
+  status: 'SENT' | 'FAILED' | 'PENDING';
+  content: string;
+}
+
 interface AirportStore {
   flights: Flight[];
   passengers: Passenger[];
   logs: LogEntry[];
   vouchers: Voucher[];
   complaints: Complaint[];
+  emails: EmailConfirmation[];
   
   // Actions
   updateFlightStatus: (flightId: string, status: FlightStatus) => void;
@@ -103,29 +118,106 @@ interface AirportStore {
   issueVoucher: (pnr: string, amount: number, reason: string) => string;
   createComplaint: (pnr: string, passengerName: string, category: string, description: string) => string;
   updateComplaint: (complaintId: string, status: Complaint['status'], resolution?: string) => void;
+  
+  // Security Actions
+  clearPassenger: (pnr: string) => void;
+  flagPassenger: (pnr: string, note?: string) => void;
+  requireEscort: (pnr: string, note?: string) => void;
+  
+  // Email Actions
+  sendEmailConfirmation: (pnr: string, to: string, subject: string, content: string, htmlContent?: string) => Promise<string>;
 }
 
 // --- Data Generation ---
 
 const HUB = 'RIX';
 
+// Airline codes and their flight number ranges
+const AIRLINES = [
+  { code: 'BT', name: 'Air Baltic', range: [100, 800] },
+  { code: 'LH', name: 'Lufthansa', range: [400, 500] },
+  { code: 'SK', name: 'SAS', range: [600, 700] },
+  { code: 'AY', name: 'Finnair', range: [800, 900] },
+  { code: 'LO', name: 'LOT', range: [200, 300] },
+  { code: 'FR', name: 'Ryanair', range: [1000, 2000] },
+  { code: 'W6', name: 'Wizz Air', range: [3000, 4000] },
+  { code: 'OS', name: 'Austrian', range: [500, 600] },
+  { code: 'LX', name: 'Swiss', range: [700, 800] },
+];
+
+// Extended destinations from RIX
 const DESTINATIONS = [
-  { code: 'OSL', city: 'Oslo', flight: 'BT151' },
-  { code: 'HEL', city: 'Helsinki', flight: 'BT301' },
-  { code: 'CDG', city: 'Paris', flight: 'BT691' },
-  { code: 'FNC', city: 'Funchal', flight: 'BT767' },
-  { code: 'MUC', city: 'Munich', flight: 'BT221' },
-  { code: 'BER', city: 'Berlin', flight: 'BT211' },
-  { code: 'PRG', city: 'Prague', flight: 'BT481' },
-  { code: 'ARN', city: 'Stockholm', flight: 'BT101' },
-  { code: 'CPH', city: 'Copenhagen', flight: 'BT131' },
-  { code: 'BLL', city: 'Billund', flight: 'BT147' },
-  { code: 'VIE', city: 'Vienna', flight: 'BT271' },
-  { code: 'TLL', city: 'Tallinn', flight: 'BT311' },
-  { code: 'VNO', city: 'Vilnius', flight: 'BT341' },
-  { code: 'FRA', city: 'Frankfurt', flight: 'BT243' },
-  { code: 'AMS', city: 'Amsterdam', flight: 'BT617' },
-  { code: 'LGW', city: 'London', flight: 'BT651' },
+  // Air Baltic routes
+  { code: 'OSL', city: 'Oslo', airline: 'BT', flightNum: 151 },
+  { code: 'HEL', city: 'Helsinki', airline: 'BT', flightNum: 301 },
+  { code: 'CDG', city: 'Paris', airline: 'BT', flightNum: 691 },
+  { code: 'FNC', city: 'Funchal', airline: 'BT', flightNum: 767 },
+  { code: 'MUC', city: 'Munich', airline: 'BT', flightNum: 221 },
+  { code: 'BER', city: 'Berlin', airline: 'BT', flightNum: 211 },
+  { code: 'PRG', city: 'Prague', airline: 'BT', flightNum: 481 },
+  { code: 'ARN', city: 'Stockholm', airline: 'BT', flightNum: 101 },
+  { code: 'CPH', city: 'Copenhagen', airline: 'BT', flightNum: 131 },
+  { code: 'BLL', city: 'Billund', airline: 'BT', flightNum: 147 },
+  { code: 'VIE', city: 'Vienna', airline: 'BT', flightNum: 271 },
+  { code: 'TLL', city: 'Tallinn', airline: 'BT', flightNum: 311 },
+  { code: 'VNO', city: 'Vilnius', airline: 'BT', flightNum: 341 },
+  { code: 'FRA', city: 'Frankfurt', airline: 'BT', flightNum: 243 },
+  { code: 'AMS', city: 'Amsterdam', airline: 'BT', flightNum: 617 },
+  { code: 'LGW', city: 'London', airline: 'BT', flightNum: 651 },
+  { code: 'LHR', city: 'London', airline: 'BT', flightNum: 661 }, // Added for long-haul connections
+  // Lufthansa routes
+  { code: 'FRA', city: 'Frankfurt', airline: 'LH', flightNum: 440 },
+  { code: 'MUC', city: 'Munich', airline: 'LH', flightNum: 450 },
+  { code: 'VIE', city: 'Vienna', airline: 'LH', flightNum: 460 },
+  // SAS routes
+  { code: 'ARN', city: 'Stockholm', airline: 'SK', flightNum: 601 },
+  { code: 'CPH', city: 'Copenhagen', airline: 'SK', flightNum: 602 },
+  { code: 'OSL', city: 'Oslo', airline: 'SK', flightNum: 603 },
+  // Finnair routes
+  { code: 'HEL', city: 'Helsinki', airline: 'AY', flightNum: 801 },
+  // LOT routes
+  { code: 'WAW', city: 'Warsaw', airline: 'LO', flightNum: 201 },
+  { code: 'PRG', city: 'Prague', airline: 'LO', flightNum: 202 },
+  // Austrian routes
+  { code: 'VIE', city: 'Vienna', airline: 'OS', flightNum: 501 },
+  // Swiss routes
+  { code: 'ZRH', city: 'Zurich', airline: 'LX', flightNum: 701 },
+  // Ryanair routes
+  { code: 'STN', city: 'London', airline: 'FR', flightNum: 1001 },
+  { code: 'DUB', city: 'Dublin', airline: 'FR', flightNum: 1002 },
+  { code: 'BGY', city: 'Milan', airline: 'FR', flightNum: 1003 },
+  // Wizz Air routes
+  { code: 'LTN', city: 'London', airline: 'W6', flightNum: 3001 },
+  { code: 'BUD', city: 'Budapest', airline: 'W6', flightNum: 3002 },
+  { code: 'WAW', city: 'Warsaw', airline: 'W6', flightNum: 3003 },
+  // Additional Air Baltic routes
+  { code: 'DUB', city: 'Dublin', airline: 'BT', flightNum: 451 },
+  { code: 'MAD', city: 'Madrid', airline: 'BT', flightNum: 521 },
+  { code: 'BCN', city: 'Barcelona', airline: 'BT', flightNum: 531 },
+  { code: 'LIS', city: 'Lisbon', airline: 'BT', flightNum: 541 },
+  { code: 'ATH', city: 'Athens', airline: 'BT', flightNum: 551 },
+  { code: 'IST', city: 'Istanbul', airline: 'BT', flightNum: 561 },
+  { code: 'DUS', city: 'Düsseldorf', airline: 'BT', flightNum: 571 },
+  { code: 'HAM', city: 'Hamburg', airline: 'BT', flightNum: 581 },
+  { code: 'BRU', city: 'Brussels', airline: 'BT', flightNum: 591 },
+  { code: 'ZAG', city: 'Zagreb', airline: 'BT', flightNum: 601 },
+  { code: 'SOF', city: 'Sofia', airline: 'BT', flightNum: 611 },
+  { code: 'BUH', city: 'Bucharest', airline: 'BT', flightNum: 621 },
+  // Additional Lufthansa routes
+  { code: 'DUS', city: 'Düsseldorf', airline: 'LH', flightNum: 470 },
+  { code: 'HAM', city: 'Hamburg', airline: 'LH', flightNum: 480 },
+  // Additional SAS routes
+  { code: 'GOT', city: 'Gothenburg', airline: 'SK', flightNum: 604 },
+  // Additional LOT routes
+  { code: 'KRK', city: 'Krakow', airline: 'LO', flightNum: 203 },
+  // Additional Ryanair routes
+  { code: 'CRL', city: 'Brussels', airline: 'FR', flightNum: 1004 },
+  { code: 'BVA', city: 'Paris', airline: 'FR', flightNum: 1005 },
+  { code: 'STN', city: 'London', airline: 'FR', flightNum: 1006 }, // Second daily
+  // Additional Wizz Air routes
+  { code: 'SOF', city: 'Sofia', airline: 'W6', flightNum: 3004 },
+  { code: 'OTP', city: 'Bucharest', airline: 'W6', flightNum: 3005 },
+  { code: 'BUD', city: 'Budapest', airline: 'W6', flightNum: 3006 }, // Second daily
 ];
 
 // Helper to generate random time between startHour and endHour
@@ -148,74 +240,284 @@ const addDuration = (time: string, minutesToAdd: number) => {
 const generateFlights = (): Flight[] => {
   const flights: Flight[] = [];
   
-  // 1. Outbound from Hub (RIX) - Morning Wave
-  DESTINATIONS.forEach(dest => {
-     const std = randomTime(7, 10);
+  // Aircraft types by airline
+  const getAircraft = (airline: string) => {
+    const aircraftMap: Record<string, string[]> = {
+      'BT': ['BCS3', 'A220'],
+      'LH': ['A320', 'A321', 'A319'],
+      'SK': ['A320', 'A321', 'A319'],
+      'AY': ['A320', 'A321'],
+      'LO': ['E175', 'E190', 'B737'],
+      'FR': ['B737', 'A320'],
+      'W6': ['A320', 'A321'],
+      'OS': ['A320', 'A321'],
+      'LX': ['A320', 'A321'],
+    };
+    const options = aircraftMap[airline] || ['A320'];
+    return options[Math.floor(Math.random() * options.length)];
+  };
+  
+  const getRegistration = (airline: string) => {
+    const regPrefix: Record<string, string> = {
+      'BT': 'YL-',
+      'LH': 'D-A',
+      'SK': 'SE-',
+      'AY': 'OH-',
+      'LO': 'SP-',
+      'FR': 'EI-',
+      'W6': 'HA-',
+      'OS': 'OE-',
+      'LX': 'HB-',
+    };
+    const prefix = regPrefix[airline] || 'XX-';
+    return prefix + Math.random().toString(36).substr(2, 3).toUpperCase() + Math.floor(Math.random() * 99);
+  };
+  
+  // 1. Outbound from Hub (RIX) - Early Morning Wave (6-8)
+  DESTINATIONS.slice(0, Math.floor(DESTINATIONS.length * 0.4)).forEach(dest => {
+     const std = randomTime(6, 8);
      flights.push({
        id: Math.random().toString(36).substr(2, 9),
-       flightNumber: dest.flight,
+       flightNumber: `${dest.airline}${dest.flightNum}`,
        origin: HUB,
        destination: dest.code,
        originCity: 'Riga',
        destinationCity: dest.city,
        std: std,
-       etd: std, // On time initially
-       gate: ['B', 'C'][Math.floor(Math.random()*2)] + Math.floor(Math.random() * 20 + 1),
+       etd: std,
+       gate: ['A', 'B', 'C'][Math.floor(Math.random()*3)] + Math.floor(Math.random() * 25 + 1),
        status: 'SCHEDULED',
-       aircraft: 'BCS3', // A220-300
-       registration: 'YL-CS' + ['L', 'A', 'B', 'M', 'N'][Math.floor(Math.random() * 5)]
+       aircraft: getAircraft(dest.airline),
+       registration: getRegistration(dest.airline)
      });
   });
 
-  // 2. Inbound to Hub (RIX) - Afternoon/Evening Wave
+  // 2. Outbound from Hub (RIX) - Morning Wave (8-10)
   DESTINATIONS.forEach(dest => {
-     const flightNumParts = dest.flight.match(/([A-Z]+)(\d+)/);
-     const returnFlightNum = flightNumParts ? `${flightNumParts[1]}${parseInt(flightNumParts[2]) + 1}` : dest.flight + 'R';
-     const std = randomTime(14, 19);
-
+     const std = randomTime(8, 10);
      flights.push({
        id: Math.random().toString(36).substr(2, 9),
-       flightNumber: returnFlightNum,
+       flightNumber: `${dest.airline}${dest.flightNum + 20}`,
+       origin: HUB,
+       destination: dest.code,
+       originCity: 'Riga',
+       destinationCity: dest.city,
+       std: std,
+       etd: std,
+       gate: ['A', 'B', 'C'][Math.floor(Math.random()*3)] + Math.floor(Math.random() * 25 + 1),
+       status: 'SCHEDULED',
+       aircraft: getAircraft(dest.airline),
+       registration: getRegistration(dest.airline)
+     });
+  });
+
+  // 3. Outbound from Hub (RIX) - Late Morning Wave (10-12)
+  DESTINATIONS.slice(0, Math.floor(DESTINATIONS.length * 0.7)).forEach(dest => {
+     const std = randomTime(10, 12);
+     flights.push({
+       id: Math.random().toString(36).substr(2, 9),
+       flightNumber: `${dest.airline}${dest.flightNum + 30}`,
+       origin: HUB,
+       destination: dest.code,
+       originCity: 'Riga',
+       destinationCity: dest.city,
+       std: std,
+       etd: std,
+       gate: ['A', 'B', 'C'][Math.floor(Math.random()*3)] + Math.floor(Math.random() * 25 + 1),
+       status: 'SCHEDULED',
+       aircraft: getAircraft(dest.airline),
+       registration: getRegistration(dest.airline)
+     });
+  });
+
+  // 4. Outbound from Hub (RIX) - Midday Wave (12-14)
+  DESTINATIONS.slice(0, Math.floor(DESTINATIONS.length * 0.6)).forEach(dest => {
+     const std = randomTime(12, 14);
+     flights.push({
+       id: Math.random().toString(36).substr(2, 9),
+       flightNumber: `${dest.airline}${dest.flightNum + 40}`,
+       origin: HUB,
+       destination: dest.code,
+       originCity: 'Riga',
+       destinationCity: dest.city,
+       std: std,
+       etd: std,
+       gate: ['A', 'B', 'C'][Math.floor(Math.random()*3)] + Math.floor(Math.random() * 25 + 1),
+       status: 'SCHEDULED',
+       aircraft: getAircraft(dest.airline),
+       registration: getRegistration(dest.airline)
+     });
+  });
+
+  // 5. Outbound from Hub (RIX) - Afternoon Wave (14-16)
+  DESTINATIONS.slice(0, Math.floor(DESTINATIONS.length * 0.5)).forEach(dest => {
+     const std = randomTime(14, 16);
+     flights.push({
+       id: Math.random().toString(36).substr(2, 9),
+       flightNumber: `${dest.airline}${dest.flightNum + 50}`,
+       origin: HUB,
+       destination: dest.code,
+       originCity: 'Riga',
+       destinationCity: dest.city,
+       std: std,
+       etd: std,
+       gate: ['A', 'B', 'C'][Math.floor(Math.random()*3)] + Math.floor(Math.random() * 25 + 1),
+       status: 'SCHEDULED',
+       aircraft: getAircraft(dest.airline),
+       registration: getRegistration(dest.airline)
+     });
+  });
+
+  // 6. Outbound from Hub (RIX) - Evening Wave (16-19)
+  DESTINATIONS.slice(0, Math.floor(DESTINATIONS.length * 0.4)).forEach(dest => {
+     const std = randomTime(16, 19);
+     flights.push({
+       id: Math.random().toString(36).substr(2, 9),
+       flightNumber: `${dest.airline}${dest.flightNum + 60}`,
+       origin: HUB,
+       destination: dest.code,
+       originCity: 'Riga',
+       destinationCity: dest.city,
+       std: std,
+       etd: std,
+       gate: ['A', 'B', 'C'][Math.floor(Math.random()*3)] + Math.floor(Math.random() * 25 + 1),
+       status: 'SCHEDULED',
+       aircraft: getAircraft(dest.airline),
+       registration: getRegistration(dest.airline)
+     });
+  });
+
+  // 7. Outbound from Hub (RIX) - Late Evening Wave (19-21)
+  DESTINATIONS.slice(0, Math.floor(DESTINATIONS.length * 0.3)).forEach(dest => {
+     const std = randomTime(19, 21);
+     flights.push({
+       id: Math.random().toString(36).substr(2, 9),
+       flightNumber: `${dest.airline}${dest.flightNum + 70}`,
+       origin: HUB,
+       destination: dest.code,
+       originCity: 'Riga',
+       destinationCity: dest.city,
+       std: std,
+       etd: std,
+       gate: ['A', 'B', 'C'][Math.floor(Math.random()*3)] + Math.floor(Math.random() * 25 + 1),
+       status: 'SCHEDULED',
+       aircraft: getAircraft(dest.airline),
+       registration: getRegistration(dest.airline)
+     });
+  });
+
+  // 3. Inbound to Hub (RIX) - Afternoon/Evening Wave (14-19)
+  DESTINATIONS.forEach(dest => {
+     const std = randomTime(14, 19);
+     flights.push({
+       id: Math.random().toString(36).substr(2, 9),
+       flightNumber: `${dest.airline}${dest.flightNum + 1}`,
        origin: dest.code,
        destination: HUB,
        originCity: dest.city,
        destinationCity: 'Riga',
        std: std,
        etd: std,
-       gate: ['B', 'C'][Math.floor(Math.random()*2)] + Math.floor(Math.random() * 20 + 1),
+       gate: ['A', 'B', 'C'][Math.floor(Math.random()*3)] + Math.floor(Math.random() * 25 + 1),
        status: 'SCHEDULED',
-       aircraft: 'BCS3',
-       registration: 'YL-CS' + ['L', 'A', 'B', 'M', 'N'][Math.floor(Math.random() * 5)]
+       aircraft: getAircraft(dest.airline),
+       registration: getRegistration(dest.airline)
      });
   });
   
-  // 3. Connecting legs (Partners / Long Haul) from Spoke to World
-  // Designed to create connections: RIX -> HUB -> WORLD
-  const CONNECTING_ROUTES = [
-    { num: 'DL047', org: 'AMS', dest: 'JFK', city: 'New York', orgCity: 'Amsterdam', dep: '11:00', aircraft: 'A333' },
-    { num: 'BA117', org: 'LGW', dest: 'JFK', city: 'New York', orgCity: 'London', dep: '12:30', aircraft: 'B777' },
-    { num: 'LH404', org: 'FRA', dest: 'JFK', city: 'New York', orgCity: 'Frankfurt', dep: '13:15', aircraft: 'B748' },
-    { num: 'AF006', org: 'CDG', dest: 'JFK', city: 'New York', orgCity: 'Paris', dep: '14:00', aircraft: 'B77W' },
-    { num: 'UA999', org: 'LHR', dest: 'EWR', city: 'Newark', orgCity: 'London', dep: '15:00', aircraft: 'B763' },
-    { num: 'EK150', org: 'LGW', dest: 'DXB', city: 'Dubai', orgCity: 'London', dep: '13:45', aircraft: 'A388' },
-    { num: 'QR010', org: 'LHR', dest: 'DOH', city: 'Doha', orgCity: 'London', dep: '14:20', aircraft: 'A359' },
+  // 4. Transit/Connecting flights from major hubs to long-haul destinations
+  // These create connection opportunities: RIX -> Hub -> Long Haul
+  const TRANSIT_HUBS = [
+    { code: 'AMS', city: 'Amsterdam', airlines: ['KL', 'DL', 'UA'] }, // Added UA for US routes
+    { code: 'FRA', city: 'Frankfurt', airlines: ['LH', 'UA', 'TG', 'DL'] }, // Added DL for US routes
+    { code: 'CDG', city: 'Paris', airlines: ['AF', 'DL', 'TG', 'UA'] }, // Added UA for US routes
+    { code: 'LHR', city: 'London', airlines: ['BA', 'AA', 'QR', 'TG', 'DL', 'UA'] }, // Added DL, UA for US routes
+    { code: 'LGW', city: 'London', airlines: ['BA', 'EK'] },
+    { code: 'MUC', city: 'Munich', airlines: ['LH', 'DL'] }, // Added DL for US routes
+    { code: 'VIE', city: 'Vienna', airlines: ['OS'] },
+    { code: 'ZRH', city: 'Zurich', airlines: ['LX'] },
+    { code: 'ARN', city: 'Stockholm', airlines: ['SK'] },
+    { code: 'CPH', city: 'Copenhagen', airlines: ['SK'] },
+    { code: 'WAW', city: 'Warsaw', airlines: ['LO'] },
   ];
   
-  CONNECTING_ROUTES.forEach(route => {
-      flights.push({
-       id: Math.random().toString(36).substr(2, 9),
-       flightNumber: route.num,
-       origin: route.org,
-       destination: route.dest,
-       originCity: route.orgCity,
-       destinationCity: route.city,
-       std: route.dep,
-       etd: route.dep,
-       gate: 'X' + Math.floor(Math.random() * 99),
-       status: 'SCHEDULED',
-       aircraft: route.aircraft,
-       registration: 'XX-' + Math.random().toString(36).substr(2, 3).toUpperCase() + Math.floor(Math.random() * 99)
-     });
+  const LONG_HAUL_DESTINATIONS = [
+    // US East Coast
+    { code: 'JFK', city: 'New York', airlines: ['DL', 'BA', 'LH', 'AF', 'UA', 'AA'] },
+    { code: 'EWR', city: 'Newark', airlines: ['UA'] },
+    { code: 'BOS', city: 'Boston', airlines: ['DL', 'BA', 'LH', 'AF', 'UA', 'AA'] },
+    { code: 'IAD', city: 'Washington', airlines: ['UA', 'DL', 'LH', 'AF', 'BA'] },
+    { code: 'MIA', city: 'Miami', airlines: ['AA', 'DL', 'BA', 'LH'] },
+    // US West Coast
+    { code: 'LAX', city: 'Los Angeles', airlines: ['DL', 'BA', 'LH', 'AF', 'UA', 'AA'] },
+    { code: 'SFO', city: 'San Francisco', airlines: ['UA', 'DL', 'BA', 'LH', 'AF'] },
+    { code: 'SEA', city: 'Seattle', airlines: ['DL', 'BA', 'LH', 'AF', 'UA'] },
+    // US Central/Midwest
+    { code: 'ORD', city: 'Chicago', airlines: ['UA', 'AA', 'DL', 'BA', 'LH', 'AF'] },
+    { code: 'DFW', city: 'Dallas', airlines: ['AA', 'DL', 'BA', 'LH'] },
+    { code: 'ATL', city: 'Atlanta', airlines: ['DL', 'BA', 'LH', 'AF'] },
+    { code: 'IAH', city: 'Houston', airlines: ['UA', 'DL', 'BA', 'LH'] },
+    // Other Long-Haul
+    { code: 'DXB', city: 'Dubai', airlines: ['EK'] },
+    { code: 'DOH', city: 'Doha', airlines: ['QR'] },
+    { code: 'BKK', city: 'Bangkok', airlines: ['TG'] },
+    { code: 'SIN', city: 'Singapore', airlines: ['SQ'] },
+    { code: 'NRT', city: 'Tokyo', airlines: ['NH', 'JL'] },
+    { code: 'ICN', city: 'Seoul', airlines: ['KE'] },
+    { code: 'YYZ', city: 'Toronto', airlines: ['AC'] },
+    { code: 'YUL', city: 'Montreal', airlines: ['AC'] },
+  ];
+  
+  // Create connecting flights from hubs to long-haul
+  TRANSIT_HUBS.forEach(hub => {
+    LONG_HAUL_DESTINATIONS.forEach(dest => {
+      // Only create if airline matches
+      const matchingAirline = hub.airlines.find(a => dest.airlines.includes(a));
+      if (matchingAirline) {
+        // Always create at least one flight per valid route
+        // This ensures connections are always available
+        const flightNum = Math.floor(Math.random() * 999) + 1;
+        // Departures between 12:00-17:00 for better connection timing
+        // This ensures connections work with morning RIX->Hub flights
+        const depTime = randomTime(12, 17);
+        
+        flights.push({
+          id: Math.random().toString(36).substr(2, 9),
+          flightNumber: `${matchingAirline}${flightNum.toString().padStart(3, '0')}`,
+          origin: hub.code,
+          destination: dest.code,
+          originCity: hub.city,
+          destinationCity: dest.city,
+          std: depTime,
+          etd: depTime,
+          gate: 'X' + Math.floor(Math.random() * 99),
+          status: 'SCHEDULED',
+          aircraft: ['A333', 'B777', 'B787', 'A350', 'B77W', 'A380'][Math.floor(Math.random() * 6)],
+          registration: 'XX-' + Math.random().toString(36).substr(2, 3).toUpperCase() + Math.floor(Math.random() * 99)
+        });
+        
+        // Create additional flights for popular routes (50% chance)
+        if (Math.random() > 0.5) {
+          const flightNum2 = Math.floor(Math.random() * 999) + 1;
+          const depTime2 = randomTime(13, 18); // Slightly later for second flight
+          
+          flights.push({
+            id: Math.random().toString(36).substr(2, 9),
+            flightNumber: `${matchingAirline}${flightNum2.toString().padStart(3, '0')}`,
+            origin: hub.code,
+            destination: dest.code,
+            originCity: hub.city,
+            destinationCity: dest.city,
+            std: depTime2,
+            etd: depTime2,
+            gate: 'X' + Math.floor(Math.random() * 99),
+            status: 'SCHEDULED',
+            aircraft: ['A333', 'B777', 'B787', 'A350', 'B77W', 'A380'][Math.floor(Math.random() * 6)],
+            registration: 'XX-' + Math.random().toString(36).substr(2, 3).toUpperCase() + Math.floor(Math.random() * 99)
+          });
+        }
+      }
+    });
   });
 
   return flights.sort((a, b) => a.std.localeCompare(b.std));
@@ -242,6 +544,7 @@ export const useAirportStore = create<AirportStore>()(
       logs: [],
       vouchers: INITIAL_VOUCHERS,
       complaints: INITIAL_COMPLAINTS,
+      emails: [],
 
       updateFlightStatus: (flightId, status) => {
         set((state) => ({
@@ -271,7 +574,7 @@ export const useAirportStore = create<AirportStore>()(
 
         set((state) => ({
           passengers: state.passengers.map(p => 
-            p.pnr === pnr ? { ...p, status: 'CHECKED_IN' } : p
+            p.pnr === pnr ? { ...p, status: 'CHECKED_IN', securityStatus: 'PENDING' } : p
           )
         }));
         get().addLog(`Passenger ${passenger.lastName} (${pnr}) checked in`, 'CHECK-IN', 'SUCCESS');
@@ -329,7 +632,8 @@ export const useAirportStore = create<AirportStore>()(
              status: 'CHECKED_IN',
              hasBags: false,
              bagCount: 0,
-             passengerType: 'REVENUE'
+             passengerType: 'REVENUE',
+             securityStatus: 'PENDING'
           }]
         }));
         get().addLog(`NoRec added: ${lastName}/${firstName} (${pnr})`, 'BOARDING', 'WARNING');
@@ -505,10 +809,120 @@ export const useAirportStore = create<AirportStore>()(
         if (complaint) {
           get().addLog(`Complaint ${complaintId} updated to ${status}`, 'CUSTOMER_SERVICE', 'INFO');
         }
+      },
+      
+      // Security Actions
+      clearPassenger: (pnr) => {
+        const state = get();
+        const passenger = state.passengers.find(p => p.pnr === pnr);
+        if (!passenger) return;
+        
+        set((state) => ({
+          passengers: state.passengers.map(p => 
+            p.pnr === pnr ? { ...p, securityStatus: 'CLEARED', securityNote: undefined } : p
+          )
+        }));
+        
+        get().addLog(`Passenger ${passenger.lastName} (${pnr}) cleared security`, 'SECURITY', 'SUCCESS');
+      },
+      
+      flagPassenger: (pnr, note) => {
+        const state = get();
+        const passenger = state.passengers.find(p => p.pnr === pnr);
+        if (!passenger) return;
+        
+        set((state) => ({
+          passengers: state.passengers.map(p => 
+            p.pnr === pnr ? { ...p, securityStatus: 'FLAGGED', securityNote: note } : p
+          )
+        }));
+        
+        get().addLog(`Passenger ${passenger.lastName} (${pnr}) flagged for security review${note ? `: ${note}` : ''}`, 'SECURITY', 'WARNING');
+      },
+      
+      requireEscort: (pnr, note) => {
+        const state = get();
+        const passenger = state.passengers.find(p => p.pnr === pnr);
+        if (!passenger) return;
+        
+        set((state) => ({
+          passengers: state.passengers.map(p => 
+            p.pnr === pnr ? { ...p, securityStatus: 'ESCORT_REQUIRED', securityNote: note } : p
+          )
+        }));
+        
+        get().addLog(`Escort required for passenger ${passenger.lastName} (${pnr})${note ? `: ${note}` : ''}`, 'SECURITY', 'ERROR');
+      },
+      
+      // Email Actions
+      sendEmailConfirmation: async (pnr, to, subject, content, htmlContent) => {
+        const emailId = Math.random().toString(36).substr(2, 9).toUpperCase();
+        
+        // Get Mailgun "from" address (uses Mailgun domain automatically)
+        const { getMailgunFromAddress } = await import('../services/mailgun');
+        const fromEmail = getMailgunFromAddress();
+        
+        // Create email record with PENDING status
+        const email: EmailConfirmation = {
+          id: emailId,
+          pnr,
+          to,
+          from: fromEmail,
+          subject,
+          sentAt: new Date().toISOString(),
+          status: 'PENDING',
+          content
+        };
+        
+        // Add to store immediately
+        set((state) => ({
+          emails: [...state.emails, email]
+        }));
+        
+        // Try to send via Mailgun
+        try {
+          const { sendEmailViaMailgun, textToHtml } = await import('../services/mailgun');
+          
+          const result = await sendEmailViaMailgun({
+            to,
+            subject,
+            text: content,
+            html: htmlContent || textToHtml(content)
+          });
+          
+          if (result.success) {
+            // Update email status to SENT
+            set((state) => ({
+              emails: state.emails.map(e => 
+                e.id === emailId ? { ...e, status: 'SENT' as const } : e
+              )
+            }));
+            get().addLog(`Email confirmation sent to ${to} for PNR ${pnr} via Mailgun`, 'RESERVATIONS', 'SUCCESS');
+            return emailId;
+          } else {
+            // Update email status to FAILED
+            set((state) => ({
+              emails: state.emails.map(e => 
+                e.id === emailId ? { ...e, status: 'FAILED' as const } : e
+              )
+            }));
+            get().addLog(`Failed to send email to ${to} for PNR ${pnr}: ${result.error}`, 'RESERVATIONS', 'ERROR');
+            return emailId;
+          }
+        } catch (error: any) {
+          // If Mailgun service fails, mark as failed but keep the email record
+          set((state) => ({
+            emails: state.emails.map(e => 
+              e.id === emailId ? { ...e, status: 'FAILED' as const } : e
+            )
+          }));
+          get().addLog(`Email service error for PNR ${pnr}: ${error.message}`, 'RESERVATIONS', 'ERROR');
+          return emailId;
+        }
       }
     }),
     {
-      name: 'airport-storage-v3', // Version bumped for new features
+      name: 'airport-storage-v9', // Version bumped for expanded US routes
     }
   )
 );

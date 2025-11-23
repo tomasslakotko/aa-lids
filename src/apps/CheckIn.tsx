@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAirportStore } from '../store/airportStore';
 import { Check, Plane, Luggage, Printer, FileText } from 'lucide-react';
+import QRCode from 'react-qr-code';
 import clsx from 'clsx';
 
 // --- Legacy Components ---
@@ -92,117 +93,202 @@ const Barcode = () => (
   </div>
 );
 
-const BoardingPass = ({ passenger, flight }: { passenger: any, flight: any }) => {
+const BoardingPass = ({ passenger, flight, passengers, flights }: { passenger: any, flight: any, passengers?: any[], flights?: any[] }) => {
   if (!passenger || !flight) return null;
+  
+  // Check for connecting flight (transit)
+  const connectingFlight = passengers && flights
+    ? (() => {
+        // Find other passengers with same PNR
+        const samePnrPassengers = passengers.filter(p => p.pnr === passenger.pnr && p.flightId !== flight.id);
+        // Find a connecting flight where current flight's destination is the connecting flight's origin
+        for (const p of samePnrPassengers) {
+          const connFlight = flights.find(f => f.id === p.flightId);
+          if (connFlight && connFlight.origin === flight.destination) {
+            return connFlight;
+          }
+        }
+        return null;
+      })()
+    : null;
+  
+  // Calculate boarding time (30 mins before departure)
+  const [depHour, depMin] = flight.std.split(':').map(Number);
+  const depTime = new Date();
+  depTime.setHours(depHour, depMin, 0);
+  const boardTime = new Date(depTime.getTime() - 30 * 60000);
+  const boardingTime = `${boardTime.getHours().toString().padStart(2, '0')}:${boardTime.getMinutes().toString().padStart(2, '0')}`;
+  
+  // Format date as "23NOV" (no space)
+  const now = new Date();
+  const day = now.getDate().toString().padStart(2, '0');
+  const month = now.toLocaleDateString('en-GB', { month: 'short' }).toUpperCase();
+  const dateStr = `${day}${month}`;
+  
+  // Get class from seat (J for rows 1-5, Y for others)
+  const seatRow = parseInt(passenger.seat?.match(/\d+/)?.[0] || '0');
+  const passengerClass = seatRow <= 5 ? 'J' : 'Y';
+  const classLabel = passengerClass === 'J' ? 'BUSINESS CLASS' : 'ECONOMY CLASS';
+  
+  // Get city names with codes
+  const originCity = (flight.originCity || flight.origin).toUpperCase();
+  const destCity = (flight.destinationCity || flight.destination).toUpperCase();
+  const originCode = flight.origin;
+  const destCode = flight.destination;
+  
+  // Generate sequence number and ETKT
+  const sequenceNo = String(Math.floor(Math.random() * 999) + 1).padStart(3, '0');
+  const etkt = String(Math.floor(Math.random() * 100000000000000) + 10000000000000);
+  
+  // Passenger name
+  const passengerName = `${passenger.lastName}/${passenger.firstName}`.toUpperCase();
+  
+  // Generate QR code data (JSON with passenger and flight info)
+  const qrData = JSON.stringify({
+    pnr: passenger.pnr,
+    flight: flight.flightNumber,
+    seat: passenger.seat,
+    name: passengerName,
+    date: dateStr,
+    origin: `${originCity}/${originCode}`,
+    destination: `${destCity}/${destCode}`,
+    gate: flight.gate,
+    boarding: boardingTime,
+    departure: flight.std,
+    class: passengerClass,
+    etkt: etkt
+  });
+  
   return (
-    <div className="bg-[#EEE8DD] w-[700px] h-[280px] rounded-xl overflow-hidden flex shadow-lg font-mono text-slate-900 relative border border-gray-300">
-        {/* Left Stub */}
-        <div className="w-[500px] p-6 flex flex-col relative border-r border-dashed border-gray-400">
+    <div className="bg-[#EEE8DD] w-[700px] h-[280px] overflow-hidden flex shadow-lg font-mono text-slate-900 relative border border-gray-400">
+        {/* Main Section (Left) */}
+        <div className="w-[520px] p-6 flex flex-col relative border-r border-dashed border-gray-500">
             {/* Header */}
-            <div className="flex justify-between items-center mb-6">
-                <div className="text-2xl font-bold tracking-widest">BOARDING PASS:</div>
-                <div className="text-3xl font-bold italic">airBaltic</div>
+            <div className="flex justify-between items-center mb-5">
+                <div className="text-xl font-bold tracking-widest text-slate-900">BOARDING PASS:</div>
+                <div className="text-2xl font-bold italic text-slate-900 lowercase" style={{ fontFamily: 'serif' }}>airBaltic</div>
             </div>
             
-            <div className="flex gap-12 mb-2">
+            {/* Flight Details Row */}
+            <div className="flex gap-5 mb-4">
                 <div>
-                    <div className="text-[10px] font-bold uppercase mb-1">FLIGHT NO:</div>
-                    <div className="text-4xl font-bold">{flight.flightNumber}</div>
+                    <div className="text-[8px] font-bold uppercase mb-0.5 text-slate-700">FLIGHT NO:</div>
+                    <div className="text-2xl font-bold text-slate-900">{flight.flightNumber}</div>
                 </div>
                 <div>
-                    <div className="text-[10px] font-bold uppercase mb-1">BOARDING TIME:</div>
-                    <div className="text-4xl font-bold">{flight.etd}</div>
+                    <div className="text-[8px] font-bold uppercase mb-0.5 text-slate-700">BOARDING TIME:</div>
+                    <div className="text-2xl font-bold text-slate-900">{boardingTime}</div>
                 </div>
-                <div className="ml-auto text-right">
-                    <div className="text-[10px] font-bold uppercase mb-1">GATE:</div>
-                    <div className="text-2xl font-bold">{flight.gate}</div>
+                <div>
+                    <div className="text-[8px] font-bold uppercase mb-0.5 text-slate-700">GATE:</div>
+                    <div className="text-lg font-bold text-slate-900">{flight.gate}</div>
                 </div>
-                <div className="text-right">
-                    <div className="text-[10px] font-bold uppercase mb-1">SEAT:</div>
-                    <div className="text-4xl font-bold">{passenger.seat}</div>
+                <div>
+                    <div className="text-[8px] font-bold uppercase mb-0.5 text-slate-700">SEAT:</div>
+                    <div className="text-2xl font-bold text-slate-900">{passenger.seat}</div>
                 </div>
             </div>
 
-            {/* Barcode Strip */}
-            <div className="flex gap-4 mt-4">
-                <div className="w-12 h-32 bg-black opacity-80 flex flex-col gap-0.5 overflow-hidden">
-                    {Array.from({ length: 60 }).map((_, i) => (
-                        <div key={i} className="bg-white h-[1px]" style={{ width: `${Math.random() * 100}%` }} />
-                    ))}
+            {/* Bottom Section with QR Code and Info */}
+            <div className="flex gap-4 mt-auto items-start">
+                {/* QR Code */}
+                <div className="w-32 h-32 bg-white p-2 flex items-center justify-center shrink-0 border border-slate-300">
+                    <QRCode
+                        value={qrData}
+                        size={120}
+                        style={{ height: "auto", maxWidth: "100%", width: "100%" }}
+                        viewBox={`0 0 120 120`}
+                    />
                 </div>
                 
-                <div className="flex-1 flex flex-col justify-center gap-2">
+                {/* Passenger and Route Info */}
+                <div className="flex-1 flex flex-col gap-1.5">
                     <div>
-                        <div className="text-[10px] font-bold uppercase">NAME:</div>
-                        <div className="text-xl font-bold uppercase">{passenger.lastName}/{passenger.firstName}</div>
+                        <div className="text-[9px] font-bold uppercase text-slate-700 mb-0.5">NAME:</div>
+                        <div className="text-lg font-bold uppercase text-slate-900">{passengerName}</div>
                     </div>
-                    <div>
-                        <div className="text-[10px] font-bold uppercase">FROM:</div>
-                        <div className="text-lg font-bold uppercase">{flight.origin}/RIX</div>
-                    </div>
-                    <div>
-                        <div className="text-[10px] font-bold uppercase">TO:</div>
-                        <div className="text-lg font-bold uppercase">{flight.destination}/{flight.destination}</div>
+                    <div className="flex flex-col gap-1">
+                        <div className="flex gap-4">
+                            <div>
+                                <div className="text-[9px] font-bold uppercase text-slate-700 mb-0.5">FROM:</div>
+                                <div className="text-base font-bold uppercase text-slate-900">{originCity}/{originCode}</div>
+                            </div>
+                            <div>
+                                <div className="text-[9px] font-bold uppercase text-slate-700 mb-0.5">TO:</div>
+                                <div className="text-base font-bold uppercase text-slate-900">{destCity}/{destCode}</div>
+                            </div>
+                        </div>
+                        {connectingFlight && (
+                            <div className="text-[8px] font-bold uppercase text-slate-600 mt-1">
+                                TRANSIT: {connectingFlight.flightNumber} TO {connectingFlight.destinationCity?.toUpperCase() || connectingFlight.destination}/{connectingFlight.destination}
+                            </div>
+                        )}
                     </div>
                 </div>
                 
-                <div className="flex flex-col justify-center gap-2">
+                {/* Class, Date, Sequence - positioned to the right */}
+                <div className="flex flex-col gap-1.5 shrink-0">
                     <div>
-                        <div className="text-[10px] font-bold uppercase">CLASS:</div>
-                        <div className="text-lg font-bold">Y</div>
+                        <div className="text-[9px] font-bold uppercase text-slate-700 mb-0.5">CLASS:</div>
+                        <div className="text-base font-bold text-slate-900">{passengerClass}</div>
                     </div>
                     <div>
-                        <div className="text-[10px] font-bold uppercase">DATE:</div>
-                        <div className="text-lg font-bold uppercase">{new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase()}</div>
+                        <div className="text-[9px] font-bold uppercase text-slate-700 mb-0.5">DATE:</div>
+                        <div className="text-base font-bold uppercase text-slate-900">{dateStr}</div>
+                    </div>
+                    <div>
+                        <div className="text-[9px] font-bold uppercase text-slate-700 mb-0.5">SEQUENCE NO:</div>
+                        <div className="text-base font-bold text-slate-900">{sequenceNo}</div>
                     </div>
                 </div>
             </div>
 
-            <div className="mt-auto pt-2 text-[10px] font-bold flex justify-between border-t border-gray-400/30">
+            {/* Bottom Footer */}
+            <div className="mt-4 pt-2 border-t border-gray-400/30 flex justify-between text-[10px] font-bold text-slate-700">
                 <div>HELPLINE 24-7 CALL 37167280422</div>
-                <div>PAPER TKT</div>
+                <div>ETKT {etkt}</div>
             </div>
         </div>
 
         {/* Right Stub */}
         <div className="flex-1 p-4 flex flex-col bg-[#EEE8DD]">
-            <div className="text-right mb-4">
-                <div className="text-xl font-bold italic">airBaltic</div>
+            <div className="text-right mb-3">
+                <div className="text-lg font-bold italic text-slate-900 lowercase" style={{ fontFamily: 'serif' }}>airBaltic</div>
             </div>
             
-            <div className="flex justify-between mb-4">
+            <div className="flex justify-between items-start mb-2">
                 <div>
-                    <div className="text-[10px] font-bold uppercase">CLASS:</div>
-                    <div className="text-xl font-bold">Y</div>
+                    <div className="text-[9px] font-bold uppercase text-slate-700">CLASS:</div>
+                    <div className="text-lg font-bold text-slate-900">{passengerClass}</div>
                 </div>
                 <div className="text-right">
-                    <div className="text-[10px] font-bold uppercase">SEAT:</div>
-                    <div className="text-3xl font-bold">{passenger.seat}</div>
+                    <div className="text-[9px] font-bold uppercase text-slate-700">SEAT:</div>
+                    <div className="text-2xl font-bold text-slate-900">{passenger.seat}</div>
                 </div>
             </div>
             
-            <div className="text-xs font-bold uppercase mb-4">ECONOMY CLASS</div>
+            <div className="text-[10px] font-bold uppercase mb-3 text-slate-700">{classLabel}</div>
             
-            <div className="space-y-1 text-[10px] font-bold uppercase">
-                <div className="truncate">{passenger.lastName}/{passenger.firstName}</div>
-                <div>{flight.flightNumber} {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase()}</div>
-                <div>FROM: {flight.origin}/RIX</div>
-                <div>TO: {flight.destination}/{flight.destination}</div>
+            <div className="space-y-1 text-[9px] font-bold uppercase text-slate-900 mb-3">
+                <div className="truncate">{passengerName}</div>
+                <div>{flight.flightNumber} {dateStr}</div>
+                <div>FROM: {originCity}/{originCode}</div>
+                <div>TO: {destCity}/{destCode}</div>
+                {connectingFlight && (
+                    <div className="text-[8px] text-slate-600">TRANSIT: {connectingFlight.flightNumber} TO {connectingFlight.destinationCity?.toUpperCase() || connectingFlight.destination}/{connectingFlight.destination}</div>
+                )}
             </div>
             
-            <div className="mt-4">
-                <div className="text-[9px] uppercase">DEPARTURE TIME:</div>
-                <div className="text-lg font-bold">{flight.std}</div>
+            <div className="mb-2">
+                <div className="text-[8px] font-bold uppercase text-slate-700 mb-0.5">DEPARTURE TIME:</div>
+                <div className="text-base font-bold text-slate-900">{flight.std}</div>
             </div>
             
-            <div className="mt-auto flex justify-between items-end text-[10px] font-bold">
-                <div>SEQUENCE NO: 0056</div>
-                <div>PAPER TKT</div>
+            <div className="mt-auto space-y-1 text-[9px] font-bold text-slate-700">
+                <div>SEQUENCE NO: {sequenceNo}</div>
+                <div>ETKT {etkt}</div>
             </div>
         </div>
-        
-        {/* Sequence overlay on left */}
-        <div className="absolute bottom-4 left-[300px] text-lg font-bold font-mono">SEQUENCE NO: 0056</div>
     </div>
   );
 };
@@ -951,7 +1037,7 @@ export const CheckInApp = () => {
                         <h3 className="text-white text-sm font-bold mb-2 uppercase tracking-wider flex items-center gap-2">
                             <FileText size={14} /> Boarding Pass
                         </h3>
-                        <BoardingPass passenger={foundPassenger} flight={foundFlight} />
+                        <BoardingPass passenger={foundPassenger} flight={foundFlight} passengers={passengers} flights={flights} />
                     </div>
 
                     {/* Bags Section */}
