@@ -142,10 +142,26 @@ export const BoardingApp = () => {
   };
 
   const handleOffload = () => {
-    if (!selectedPaxId) return alert('Select a passenger first');
+    if (!selectedPaxId) {
+      alert('Select a passenger first');
+      return;
+    }
     const pax = passengers.find(p => p.id === selectedPaxId);
-    if (pax && confirm(`Offload ${pax.lastName}?`)) {
-        offloadPassenger(pax.pnr);
+    if (!pax) {
+      alert('Passenger not found');
+      return;
+    }
+    
+    // Check if passenger can be offloaded
+    if (pax.status === 'BOOKED') {
+      alert('Passenger is already in BOOKED status. Cannot offload.');
+      return;
+    }
+    
+    if (confirm(`Offload ${pax.lastName}, ${pax.firstName} (${pax.pnr})?\n\nThis will:\n- Set status to BOOKED\n- Clear seat assignment\n- Clear baggage information`)) {
+      offloadPassenger(pax.pnr);
+      setSelectedPaxId(null); // Clear selection after offload
+      alert(`Passenger ${pax.lastName} has been offloaded.`);
     }
   };
 
@@ -353,7 +369,13 @@ export const BoardingApp = () => {
             <button className="text-left px-2 py-2 bg-gray-100 border border-gray-400 hover:bg-blue-50 rounded flex items-center gap-2"><Users size={14}/> Select Group</button>
             <div className="h-px bg-gray-300 my-1"></div>
             <button onClick={handlePromoteWait} className="text-left px-2 py-2 bg-gray-100 border border-gray-400 hover:bg-blue-50 rounded flex items-center gap-2"><UserPlus size={14}/> Promote Wait</button>
-            <button onClick={handleOffload} className="text-left px-2 py-2 bg-gray-100 border border-gray-400 hover:bg-blue-50 rounded flex items-center gap-2"><UserMinus size={14}/> Offload Pax</button>
+            <button 
+              onClick={handleOffload} 
+              disabled={!selectedPaxId ? true : (passengers.find(p => p.id === selectedPaxId)?.status === 'BOOKED')}
+              className="text-left px-2 py-2 bg-gray-100 border border-gray-400 hover:bg-blue-50 rounded flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <UserMinus size={14}/> Offload Pax
+            </button>
             <button onClick={handleAddNoRec} className="text-left px-2 py-2 bg-gray-100 border border-gray-400 hover:bg-blue-50 rounded flex items-center gap-2"><Plus size={14}/> Add NoRec</button>
          </div>
 

@@ -731,12 +731,24 @@ export const useAirportStore = create<AirportStore>()(
       },
 
       offloadPassenger: (pnr) => {
+        const state = get();
+        const passenger = state.passengers.find(p => p.pnr === pnr);
+        if (!passenger) {
+          get().addLog(`Passenger ${pnr} not found for offload`, 'BOARDING', 'ERROR');
+          return;
+        }
+        
         set((state) => ({
           passengers: state.passengers.map(p => 
             p.pnr === pnr ? { ...p, status: 'BOOKED', seat: '', bagCount: 0, hasBags: false, bagsLoaded: 0 } : p
           )
         }));
         get().addLog(`Passenger ${pnr} offloaded`, 'BOARDING', 'WARNING');
+        
+        // Sync to database
+        if (get().isDatabaseReady) {
+          get().syncToDatabase().catch(() => {});
+        }
       },
 
       loadBag: (pnr) => {
