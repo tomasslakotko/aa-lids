@@ -43,6 +43,9 @@ export const ReservationsApp = () => {
   const flights = useAirportStore((state) => state.flights);
   const passengers = useAirportStore((state) => state.passengers);
   const emails = useAirportStore((state) => state.emails);
+  const vouchers = useAirportStore((state) => state.vouchers);
+  const logs = useAirportStore((state) => state.logs);
+  const complaints = useAirportStore((state) => state.complaints);
   const createBooking = useAirportStore((state) => state.createBooking);
   const updatePassengerDetails = useAirportStore((state) => state.updatePassengerDetails);
   const sendEmailConfirmation = useAirportStore((state) => state.sendEmailConfirmation);
@@ -838,34 +841,64 @@ export const ReservationsApp = () => {
           // Sort flights by departure time
           uniqueFlights.sort((a, b) => a.std.localeCompare(b.std));
           
-          // Debug: Log how many segments found (can be removed later)
-          if (uniqueFlights.length !== foundEntries.length / uniquePassengers.length) {
-            console.log(`RT Debug: Found ${foundEntries.length} passenger entries, ${uniquePassengers.length} unique passengers, ${uniqueFlights.length} unique flights`);
-          }
+          // Get related data
+          const pnrEmails = emails.filter(e => e.pnr === term);
+          const pnrVouchers = vouchers.filter(v => v.pnr === term);
+          const pnrComplaints = complaints.filter(c => c.pnr === term);
+          
+          // Filter logs by PNR (check if message contains PNR or passenger names)
+          const passengerNames = uniquePassengers.map(p => `${p.lastName} ${p.firstName}`.toLowerCase());
+          const pnrLogs = logs.filter(l => {
+            const msgLower = l.message.toLowerCase();
+            return msgLower.includes(term.toLowerCase()) || 
+                   passengerNames.some(name => msgLower.includes(name));
+          });
+          
+          // Extract payment info from logs
+          const paymentLogs = pnrLogs.filter(l => 
+            l.message.toLowerCase().includes('payment') || 
+            l.message.toLowerCase().includes('paid') ||
+            l.message.toLowerCase().includes('receipt') ||
+            l.message.toLowerCase().includes('card') ||
+            l.message.toLowerCase().includes('cash')
+          );
 
           addLog(`RP/RIX1A0988/RIX1A0988            AA/SU  ${new Date().toDateString()}   ${term}`);
           
           let lineIdx = 1;
           
-          // 1. Passenger List
+          // 1. Passenger List with details
           uniquePassengers.forEach((p) => {
              const typeLabel = p.passengerType === 'STAFF_DUTY' ? ' [STAFF DUTY]' : p.passengerType === 'STAFF_SBY' ? ' [STAFF SBY]' : '';
-             addLog(`  ${lineIdx}.${p.lastName}/${p.firstName} MR${typeLabel}`);
+             const statusLabel = p.status !== 'BOOKED' ? ` [${p.status}]` : '';
+             addLog(`  ${lineIdx}.${p.lastName}/${p.firstName} MR${typeLabel}${statusLabel}`);
              if (p.staffId) addLog(`     EMP ID: ${p.staffId}`);
+             if (p.seat && p.seat !== 'REQ' && p.seat !== 'TBA' && p.seat !== 'SBY') {
+               addLog(`     SEAT: ${p.seat}`);
+             }
+             if (p.bagCount > 0) {
+               addLog(`     BAGS: ${p.bagCount} PC(S)`);
+             }
+             if (p.boardingComment) {
+               addLog(`     COMMENT: ${p.boardingComment}`);
+             }
              lineIdx++;
           });
           
           // 2. Segment List
           uniqueFlights.forEach((f) => {
-             // Calculate HK count based on unique passengers on this flight with this PNR
              const paxCountOnFlight = uniquePassengers.length; 
-             // Note: simplified logic assuming all pax are on all segments for this PNR, 
-             // which matches the createBooking logic.
              
              // Format date as "10NOV" (day + month)
-             const today = new Date();
-             const day = today.getDate().toString().padStart(2, '0');
-             const month = today.toLocaleDateString('en-GB', { month: 'short' }).toUpperCase();
+             // Try to parse date from std, or use today's date
+             let flightDate = new Date();
+             if (f.std && f.std.includes('T')) {
+               flightDate = new Date(f.std);
+             } else if (f.std && f.std.match(/^\d{4}-\d{2}-\d{2}/)) {
+               flightDate = new Date(f.std);
+             }
+             const day = flightDate.getDate().toString().padStart(2, '0');
+             const month = flightDate.toLocaleDateString('en-GB', { month: 'short' }).toUpperCase();
              const dateStr = `${day}${month}`;
              
              const seatCode = foundEntries[0].passengerType === 'STAFF_SBY' ? 'SBY' : 'Y';
@@ -873,9 +906,72 @@ export const ReservationsApp = () => {
              lineIdx++;
           });
           
+          // 3. Contact Information
           addLog(`  ${lineIdx} AP LON 020-7123-4567`);
           lineIdx++;
+          
+          // 4. Email Addresses
+          if (pnrEmails.length > 0) {
+             const uniqueEmails = Array.from(new Set(pnrEmails.map(e => e.to)));
+             uniqueEmails.forEach(email => {
+                const emailStatus = pnrEmails.find(e => e.to === email)?.status || 'PENDING';
+                addLog(`  ${lineIdx} APE-${email} [${emailStatus}]`);
+                lineIdx++;
+             });
+          }
+          
+          // 5. Ticketing
           addLog(`  ${lineIdx} TK TL${new Date().getDate()}NOV/RIX1A0988`);
+          lineIdx++;
+          
+          // 6. Payment Information
+          if (paymentLogs.length > 0) {
+             addLog(' ');
+             addLog('--- PAYMENT HISTORY ---');
+             paymentLogs.slice(-5).forEach(log => {
+                const date = new Date(log.timestamp).toLocaleString();
+                addLog(`  ${date}: ${log.message}`);
+             });
+          }
+          
+          // 7. Vouchers
+          if (pnrVouchers.length > 0) {
+             addLog(' ');
+             addLog('--- VOUCHERS ---');
+             pnrVouchers.forEach(v => {
+                const status = v.status === 'USED' ? '[USED]' : v.status === 'EXPIRED' ? '[EXPIRED]' : '[ACTIVE]';
+                addLog(`  ${v.amount} ${v.currency} - ${v.reason} ${status}`);
+                addLog(`    Issued: ${new Date(v.issuedDate).toLocaleDateString()}`);
+                if (v.expiryDate) {
+                   addLog(`    Expires: ${new Date(v.expiryDate).toLocaleDateString()}`);
+                }
+             });
+          }
+          
+          // 8. Complaints
+          if (pnrComplaints.length > 0) {
+             addLog(' ');
+             addLog('--- COMPLAINTS ---');
+             pnrComplaints.forEach(c => {
+                addLog(`  [${c.status}] ${c.category}: ${c.description}`);
+                if (c.resolution) {
+                   addLog(`    Resolution: ${c.resolution}`);
+                }
+                addLog(`    Date: ${new Date(c.createdAt).toLocaleDateString()}`);
+             });
+          }
+          
+          // 9. Recent Activity Logs
+          if (pnrLogs.length > 0) {
+             addLog(' ');
+             addLog('--- RECENT ACTIVITY ---');
+             pnrLogs.slice(-10).forEach(log => {
+                const date = new Date(log.timestamp).toLocaleString();
+                addLog(`  ${date} [${log.source}]: ${log.message}`);
+             });
+          }
+          
+          addLog(' ');
        } else {
           addLog('NO PNR FOUND');
        }
