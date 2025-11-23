@@ -654,7 +654,11 @@ export const CheckInApp = () => {
         );
       }
       
-      addLog(`Payment processed: ${paymentMethod} - ${paymentAmount.toFixed(2)} EUR for ${foundPassenger.lastName} ${foundPassenger.firstName} (${foundPassenger.pnr})`, 'CHECK_IN');
+      const totalPaid = paymentAmount;
+      const servicesTotal = paymentItems.reduce((sum, item) => sum + item.total, 0);
+      const ticketTotal = ticketPrice;
+      
+      addLog(`Payment processed: ${paymentMethod} - ${totalPaid.toFixed(2)} EUR (Ticket: ${ticketTotal.toFixed(2)} EUR, Services: ${servicesTotal.toFixed(2)} EUR) for ${foundPassenger.lastName} ${foundPassenger.firstName} (${foundPassenger.pnr})`, 'CHECK_IN');
       setShowPaymentModal(false);
       setPaymentAmount(0);
       setTicketPrice(0);
@@ -662,38 +666,100 @@ export const CheckInApp = () => {
       setCardNumber('');
       setCardExpiry('');
       setCardCvv('');
-      alert(`PAYMENT PROCESSED: ${paymentAmount.toFixed(2)} EUR via ${paymentMethod}${passengerEmail ? ' - Receipt sent to email' : ''}`);
+      alert(`PAYMENT PROCESSED: ${totalPaid.toFixed(2)} EUR via ${paymentMethod}${passengerEmail ? ' - Receipt sent to email' : ''}`);
     }
   };
   
   const handleSaveServices = () => {
     if (foundPassenger) {
       const updates: any = {};
+      const newPaymentItems: Array<{description: string; quantity: number; unitPrice: number; total: number}> = [];
+      let totalDue = 0;
+      
+      // Calculate costs and prepare payment items
       if (extraBags > 0) {
+        const bagPrice = 25; // EUR per bag
+        const bagTotal = extraBags * bagPrice;
+        newPaymentItems.push({
+          description: `Extra Baggage (${extraBags} PC)`,
+          quantity: extraBags,
+          unitPrice: bagPrice,
+          total: bagTotal
+        });
+        totalDue += bagTotal;
+        
         updates.bagCount = foundPassenger.bagCount + extraBags;
         updates.hasBags = true;
         (updates as any).paidBags = ((foundPassenger as any).paidBags || 0) + extraBags; // Track paid bags
         addLog(`Added ${extraBags} extra bag(s) for ${foundPassenger.lastName} ${foundPassenger.firstName} (${foundPassenger.pnr})`, 'CHECK_IN');
       }
       if (loungeAccess) {
+        const loungePrice = 30; // EUR
+        newPaymentItems.push({
+          description: 'Lounge Access',
+          quantity: 1,
+          unitPrice: loungePrice,
+          total: loungePrice
+        });
+        totalDue += loungePrice;
+        
         updates.loungeAccess = true;
         addLog(`Lounge access granted for ${foundPassenger.lastName} ${foundPassenger.firstName} (${foundPassenger.pnr})`, 'CHECK_IN');
       }
       if (upgradeClass) {
+        let upgradePrice = 0;
+        let upgradeDescription = '';
+        if (upgradeClass === 'BUSINESS') {
+          upgradePrice = 100;
+          upgradeDescription = 'Upgrade to Business Class';
+        } else if (upgradeClass === 'FIRST') {
+          upgradePrice = 200;
+          upgradeDescription = 'Upgrade to First Class';
+        } else if (upgradeClass === 'PREMIUM_ECONOMY') {
+          upgradePrice = 50;
+          upgradeDescription = 'Upgrade to Premium Economy';
+        }
+        
+        if (upgradePrice > 0) {
+          newPaymentItems.push({
+            description: upgradeDescription,
+            quantity: 1,
+            unitPrice: upgradePrice,
+            total: upgradePrice
+          });
+          totalDue += upgradePrice;
+        }
+        
         // Convert upgrade class to J or Y format
         const classCode = upgradeClass === 'BUSINESS' || upgradeClass === 'FIRST' ? 'J' : 'Y';
         upgradePassenger(foundPassenger.pnr, classCode);
         updates.upgraded = true; // Track upgrade
         addLog(`Upgraded ${foundPassenger.lastName} ${foundPassenger.firstName} (${foundPassenger.pnr}) to ${upgradeClass}`, 'CHECK_IN');
       }
+      
+      // Apply updates
       if (Object.keys(updates).length > 0) {
         updatePassengerDetails(foundPassenger.pnr, updates);
       }
+      
+      // Add payment items and update payment amount
+      if (newPaymentItems.length > 0) {
+        setPaymentItems(prev => [...prev, ...newPaymentItems]);
+        setPaymentAmount(prev => prev + totalDue);
+      }
+      
       setShowServicesModal(false);
       setExtraBags(0);
       setLoungeAccess(false);
       setUpgradeClass('');
-      alert('SERVICES APPLIED');
+      
+      if (totalDue > 0) {
+        alert(`SERVICES APPLIED - PAYMENT DUE: ${totalDue.toFixed(2)} EUR`);
+        // Automatically open payment modal
+        setShowPaymentModal(true);
+      } else {
+        alert('SERVICES APPLIED');
+      }
     }
   };
   
@@ -1416,6 +1482,28 @@ export const CheckInApp = () => {
               <p className="text-xs text-gray-500">PNR: {foundPassenger.pnr}</p>
             </div>
             <div className="space-y-4">
+              {/* Payment Items List */}
+              {paymentItems.length > 0 && (
+                <div className="border border-gray-300 rounded p-3 bg-gray-50">
+                  <label className="block text-sm font-bold mb-2">Services/Items:</label>
+                  <div className="space-y-2">
+                    {paymentItems.map((item, idx) => (
+                      <div key={idx} className="flex justify-between items-center text-sm border-b border-gray-200 pb-2">
+                        <div>
+                          <div className="font-semibold">{item.description}</div>
+                          <div className="text-xs text-gray-500">Qty: {item.quantity} × {item.unitPrice.toFixed(2)} EUR</div>
+                        </div>
+                        <div className="font-bold">{item.total.toFixed(2)} EUR</div>
+                      </div>
+                    ))}
+                    <div className="flex justify-between items-center pt-2 border-t-2 border-gray-400 font-bold">
+                      <span>Total Due:</span>
+                      <span className="text-green-600">{paymentItems.reduce((sum, item) => sum + item.total, 0).toFixed(2)} EUR</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
               <div>
                 <label className="block text-sm font-bold mb-1">Ticket Price (EUR):</label>
                 <input
@@ -1435,6 +1523,11 @@ export const CheckInApp = () => {
                   className="w-full border border-gray-300 rounded p-2 text-sm"
                   placeholder="0.00"
                 />
+                {paymentItems.length > 0 && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Includes: {paymentItems.reduce((sum, item) => sum + item.total, 0).toFixed(2)} EUR from services
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-bold mb-1">Payment Method:</label>
@@ -1495,22 +1588,38 @@ export const CheckInApp = () => {
                   </div>
                 </div>
               )}
-              {paymentAmount > 0 && ticketPrice > 0 && (
+              {(paymentAmount > 0 || ticketPrice > 0 || paymentItems.length > 0) && (
                 <div className="bg-blue-50 border border-blue-200 rounded p-3">
-                  <div className="flex justify-between text-sm mb-1">
-                    <span>Price:</span>
-                    <span className="font-bold">{ticketPrice.toFixed(2)} EUR</span>
+                  {ticketPrice > 0 && (
+                    <div className="flex justify-between text-sm mb-1">
+                      <span>Ticket Price:</span>
+                      <span className="font-bold">{ticketPrice.toFixed(2)} EUR</span>
+                    </div>
+                  )}
+                  {paymentItems.length > 0 && (
+                    <div className="flex justify-between text-sm mb-1">
+                      <span>Services Total:</span>
+                      <span className="font-bold">{paymentItems.reduce((sum, item) => sum + item.total, 0).toFixed(2)} EUR</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-sm mb-1 font-bold border-t border-blue-300 pt-1 mt-1">
+                    <span>Total Due:</span>
+                    <span className="text-blue-700">{(ticketPrice + paymentItems.reduce((sum, item) => sum + item.total, 0)).toFixed(2)} EUR</span>
                   </div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span>Payment:</span>
-                    <span className="font-bold">{paymentAmount.toFixed(2)} EUR</span>
-                  </div>
-                  <div className="flex justify-between text-sm font-bold border-t border-blue-300 pt-1 mt-1">
-                    <span>Change:</span>
-                    <span className={paymentAmount >= ticketPrice ? 'text-green-600' : 'text-red-600'}>
-                      {(paymentAmount - ticketPrice).toFixed(2)} EUR
-                    </span>
-                  </div>
+                  {paymentAmount > 0 && (
+                    <>
+                      <div className="flex justify-between text-sm mb-1 mt-2">
+                        <span>Payment Received:</span>
+                        <span className="font-bold">{paymentAmount.toFixed(2)} EUR</span>
+                      </div>
+                      <div className="flex justify-between text-sm font-bold border-t border-blue-300 pt-1 mt-1">
+                        <span>Change:</span>
+                        <span className={paymentAmount >= (ticketPrice + paymentItems.reduce((sum, item) => sum + item.total, 0)) ? 'text-green-600' : 'text-red-600'}>
+                          {(paymentAmount - (ticketPrice + paymentItems.reduce((sum, item) => sum + item.total, 0))).toFixed(2)} EUR
+                        </span>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
