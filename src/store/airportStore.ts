@@ -132,18 +132,8 @@ interface AirportStore {
 
 const HUB = 'RIX';
 
-// Airline codes and their flight number ranges
-const AIRLINES = [
-  { code: 'BT', name: 'Air Baltic', range: [100, 800] },
-  { code: 'LH', name: 'Lufthansa', range: [400, 500] },
-  { code: 'SK', name: 'SAS', range: [600, 700] },
-  { code: 'AY', name: 'Finnair', range: [800, 900] },
-  { code: 'LO', name: 'LOT', range: [200, 300] },
-  { code: 'FR', name: 'Ryanair', range: [1000, 2000] },
-  { code: 'W6', name: 'Wizz Air', range: [3000, 4000] },
-  { code: 'OS', name: 'Austrian', range: [500, 600] },
-  { code: 'LX', name: 'Swiss', range: [700, 800] },
-];
+// Airline codes and their flight number ranges (used in DESTINATIONS)
+// Note: AIRLINES constant removed as it's not directly used - airline info is in DESTINATIONS
 
 // Extended destinations from RIX
 const DESTINATIONS = [

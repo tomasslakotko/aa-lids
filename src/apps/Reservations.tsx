@@ -854,7 +854,7 @@ export const ReservationsApp = () => {
              const ticketNumber = `257-${Math.floor(Math.random() * 10000000000)}`;
              
              // Prepare flight data for HTML template
-             const flightData = wipPnr.segments.map((s, idx) => {
+             const flightData = wipPnr.segments.map((s) => {
                const flight = flights.find(f => f.id === s.id);
                if (!flight) return null;
                
@@ -906,7 +906,6 @@ export const ReservationsApp = () => {
                pnr: newPnr,
                ticketNumber,
                passengerName: `${wipPnr.passengers[0].lastName} / ${wipPnr.passengers[0].firstName} ${wipPnr.passengers[0].title}`,
-               passengers: wipPnr.passengers,
                flights: flightData,
                fare: wipPnr.pricing ? {
                  baseFare: wipPnr.pricing.baseFare,
@@ -927,7 +926,7 @@ export const ReservationsApp = () => {
              textContent += `BOOKING REFERENCE: ${newPnr}\n`;
              textContent += `ELECTRONIC TICKET NUMBER: ${ticketNumber}\n\n`;
              textContent += 'FLIGHT DETAILS:\n';
-             flightData.forEach((f, idx) => {
+             flightData.forEach((f) => {
                textContent += `  ${f.flightNumber}: ${f.originCity} (${f.origin}) → ${f.destinationCity} (${f.destination})\n`;
                textContent += `  Departure: ${f.departureDate} ${f.departureTime} | Arrival: ${f.arrivalDate} ${f.arrivalTime}\n`;
                textContent += `  Gate: ${f.gate} | Class: ${f.bookingClass} | Baggage: ${f.baggage}\n\n`;

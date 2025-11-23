@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useAirportStore } from '../store/airportStore';
 import type { Passenger, SecurityStatus } from '../store/airportStore';
-import { Search, CheckCircle, AlertTriangle, Shield, User, Plane, Clock, X, ScanLine, Users, Camera, CameraOff } from 'lucide-react';
+import { Search, CheckCircle, AlertTriangle, Shield, Clock, X, ScanLine, Users, Camera, CameraOff } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
 import clsx from 'clsx';
 
@@ -143,7 +143,7 @@ export const SecurityApp = () => {
           // Successfully scanned
           processScannedCode(decodedText);
         },
-        (errorMessage) => {
+        (_errorMessage) => {
           // Scanning error (usually just means no code detected yet)
           // Don't show error for normal scanning
         }
