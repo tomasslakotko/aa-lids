@@ -96,6 +96,7 @@ interface AirportStore {
   vouchers: Voucher[];
   complaints: Complaint[];
   emails: EmailConfirmation[];
+  isDatabaseReady: boolean;
   
   // Actions
   updateFlightStatus: (flightId: string, status: FlightStatus) => void;
@@ -128,6 +129,10 @@ interface AirportStore {
   
   // Email Actions
   sendEmailConfirmation: (pnr: string, to: string, subject: string, content: string, htmlContent?: string) => Promise<string>;
+  
+  // Database Actions
+  syncToDatabase: () => Promise<void>;
+  loadFromDatabase: () => Promise<void>;
 }
 
 // --- Data Generation ---
@@ -537,6 +542,7 @@ export const useAirportStore = create<AirportStore>()(
       vouchers: INITIAL_VOUCHERS,
       complaints: INITIAL_COMPLAINTS,
       emails: [],
+      isDatabaseReady: false,
 
       updateFlightStatus: (flightId, status) => {
         set((state) => ({

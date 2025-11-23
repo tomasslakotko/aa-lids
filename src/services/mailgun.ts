@@ -296,7 +296,7 @@ export const generateCheckInConfirmationHtml = (params: {
   bagCount: number;
 }): string => {
   const { passengerName, pnr, flightNumber, origin, originCity, destination, destinationCity, 
-          departureDate, departureTime, arrivalDate, arrivalTime, gate, seat, boardingTime, bagCount } = params;
+          departureDate, departureTime, arrivalDate, arrivalTime, seat, boardingTime, bagCount } = params;
   
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
