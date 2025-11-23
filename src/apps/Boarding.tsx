@@ -559,6 +559,18 @@ export const BoardingApp = () => {
          >
            <Printer size={12} /> Briefsheet
          </button>
+         <button 
+           onClick={() => {
+             if (selectedFlight) {
+               setShowScannerQR(true);
+             } else {
+               alert('Please select a flight first');
+             }
+           }}
+           className="flex items-center gap-1 px-3 py-1 bg-green-200 border border-green-400 rounded hover:bg-green-300 text-xs"
+         >
+           <Camera size={12} /> Connect Scanner
+         </button>
          <div className="flex-1 flex justify-center gap-2">
             {/* Gate Message Input */}
             <div className="flex items-center gap-2 bg-white border border-gray-300 rounded px-2">
