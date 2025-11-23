@@ -308,33 +308,46 @@ export const BoardingApp = () => {
 
   // Start camera scanner
   const startScanner = async () => {
-    if (!scannerElementRef.current) return;
+    // Set scanning state first so the element gets rendered
+    setIsScanning(true);
+    setScanError(null);
     
-    try {
-      const html5QrCode = new Html5Qrcode(scannerElementRef.current.id);
-      scannerRef.current = html5QrCode;
+    // Wait a bit for the DOM to update and element to be available
+    setTimeout(async () => {
+      if (!scannerElementRef.current) {
+        setIsScanning(false);
+        setScanError('Scanner element not found');
+        return;
+      }
       
-      await html5QrCode.start(
-        { facingMode: 'environment' },
-        {
-          fps: 10,
-          qrbox: { width: 250, height: 250 },
-        },
-        (decodedText) => {
-          processScannedCode(decodedText);
-        },
-        (_errorMessage) => {
-          // Ignore scanning errors (they're frequent during scanning)
+      try {
+        const elementId = scannerElementRef.current.id || 'boarding-qr-reader';
+        const html5QrCode = new Html5Qrcode(elementId);
+        scannerRef.current = html5QrCode;
+        
+        await html5QrCode.start(
+          { facingMode: 'environment' },
+          {
+            fps: 10,
+            qrbox: { width: 250, height: 250 },
+            aspectRatio: 1.0,
+          },
+          (decodedText) => {
+            processScannedCode(decodedText);
+          },
+          (_errorMessage) => {
+            // Ignore scanning errors (they're frequent during scanning)
+          }
+        );
+      } catch (err: any) {
+        console.error('Scanner error:', err);
+        setScanError(`Failed to start camera: ${err.message || 'Please allow camera access'}`);
+        setIsScanning(false);
+        if (scannerRef.current) {
+          scannerRef.current = null;
         }
-      );
-      
-      setIsScanning(true);
-      setScanError(null);
-    } catch (err: any) {
-      console.error('Scanner error:', err);
-      setScanError(`Failed to start camera: ${err.message}`);
-      setIsScanning(false);
-    }
+      }
+    }, 100);
   };
 
   // Stop camera scanner
@@ -616,7 +629,7 @@ export const BoardingApp = () => {
             {isScanning && (
               <div className="border-b border-gray-300 bg-black p-4 flex flex-col items-center">
                 <div 
-                  id="qr-reader" 
+                  id="boarding-qr-reader" 
                   ref={scannerElementRef}
                   className="w-full max-w-md"
                 ></div>
