@@ -623,7 +623,15 @@ export const BoardingApp = () => {
                 if (pax) {
                   const comment = prompt('Enter boarding comment/notes:', pax.boardingComment || '');
                   if (comment !== null) {
-                    updatePassengerDetails(pax.pnr, { boardingComment: comment || undefined });
+                    const trimmedComment = comment.trim();
+                    updatePassengerDetails(pax.pnr, { 
+                      boardingComment: trimmedComment ? trimmedComment : undefined 
+                    });
+                    console.log('Comment updated:', {
+                      pnr: pax.pnr,
+                      comment: trimmedComment || 'undefined',
+                      hasComment: !!trimmedComment
+                    });
                   }
                 }
               }}
@@ -777,14 +785,14 @@ export const BoardingApp = () => {
                     <div className="flex items-center gap-1">
                        {p.status === 'CHECKED_IN' && (
                          <>
-                           {p.boardingComment && p.boardingComment.trim() && (
+                           {p.boardingComment && p.boardingComment.trim() ? (
                              <span title={p.boardingComment} className="cursor-help">
                                <AlertCircle 
                                  size={14} 
                                  className="text-red-600 fill-red-600" 
                                />
                              </span>
-                           )}
+                           ) : null}
                            <button 
                              onClick={(e) => { e.stopPropagation(); handleBoardPax(p.pnr); }}
                              className="bg-green-600 text-white px-2 py-0.5 rounded text-[9px] hover:bg-green-700"

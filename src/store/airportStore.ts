@@ -771,11 +771,20 @@ export const useAirportStore = create<AirportStore>()(
       },
 
       updatePassengerDetails: (pnr, details) => {
-        set((state) => ({
-          passengers: state.passengers.map(p => 
-            p.pnr === pnr ? { ...p, ...details } : p
-          )
-        }));
+        console.log('updatePassengerDetails called:', { pnr, details });
+        set((state) => {
+          const updated = {
+            passengers: state.passengers.map(p => {
+              if (p.pnr === pnr) {
+                const updated = { ...p, ...details };
+                console.log('Updated passenger:', { pnr, oldComment: p.boardingComment, newComment: updated.boardingComment });
+                return updated;
+              }
+              return p;
+            })
+          };
+          return updated;
+        });
         get().addLog(`Passenger details updated for ${pnr}`, 'CHECK-IN', 'INFO');
         // Sync to database
         if (get().isDatabaseReady) {
