@@ -4,7 +4,7 @@ import clsx from 'clsx';
 import { 
   Users, User, ArrowLeft, HelpCircle, 
   Printer, Plus, UserPlus, UserMinus,
-  CheckCircle, MessageSquare
+  CheckCircle, MessageSquare, ArrowDown
 } from 'lucide-react';
 import { Briefsheet } from '../components/Briefsheet';
 
@@ -61,6 +61,7 @@ export const BoardingApp = () => {
     }
   }, [selectedFlightId, flights]);
   const boardPassenger = useAirportStore((state) => state.boardPassenger);
+  const deboardPassenger = useAirportStore((state) => state.deboardPassenger);
   const updateFlightStatus = useAirportStore((state) => state.updateFlightStatus);
   const updateGateMessage = useAirportStore((state) => state.updateGateMessage);
   const offloadPassenger = useAirportStore((state) => state.offloadPassenger);
@@ -162,6 +163,33 @@ export const BoardingApp = () => {
       offloadPassenger(pax.pnr);
       setSelectedPaxId(null); // Clear selection after offload
       alert(`Passenger ${pax.lastName} has been offloaded.`);
+    }
+  };
+
+  const handleDeboard = () => {
+    if (!selectedPaxId) {
+      alert('Select a passenger first');
+      return;
+    }
+    const pax = passengers.find(p => p.id === selectedPaxId);
+    if (!pax) {
+      alert('Passenger not found');
+      return;
+    }
+    
+    if (pax.status !== 'BOARDED') {
+      alert(`Passenger is not boarded (status: ${pax.status}). Only boarded passengers can be debarked.`);
+      return;
+    }
+    
+    if (confirm(`Deboard ${pax.lastName}, ${pax.firstName} (${pax.pnr})?\n\nThis will:\n- Change status from BOARDED to CHECKED_IN\n- Passenger will remain checked in but not boarded`)) {
+      const result = deboardPassenger(pax.pnr);
+      if (result) {
+        setSelectedPaxId(null); // Clear selection after deboard
+        alert(`Passenger ${pax.lastName} has been debarked.`);
+      } else {
+        alert(`Failed to deboard passenger ${pax.lastName}.`);
+      }
     }
   };
 
@@ -375,6 +403,13 @@ export const BoardingApp = () => {
               className="text-left px-2 py-2 bg-gray-100 border border-gray-400 hover:bg-blue-50 rounded flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <UserMinus size={14}/> Offload Pax
+            </button>
+            <button 
+              onClick={handleDeboard} 
+              disabled={!selectedPaxId ? true : (passengers.find(p => p.id === selectedPaxId)?.status !== 'BOARDED')}
+              className="text-left px-2 py-2 bg-gray-100 border border-gray-400 hover:bg-blue-50 rounded flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ArrowDown size={14}/> DEboard
             </button>
             <button onClick={handleAddNoRec} className="text-left px-2 py-2 bg-gray-100 border border-gray-400 hover:bg-blue-50 rounded flex items-center gap-2"><Plus size={14}/> Add NoRec</button>
          </div>

@@ -107,6 +107,7 @@ interface AirportStore {
   cancelCheckIn: (pnr: string) => boolean;
   updatePassengerDetails: (pnr: string, details: Partial<Passenger>) => void;
   offloadPassenger: (pnr: string) => void;
+  deboardPassenger: (pnr: string) => boolean;
   loadBag: (pnr: string) => void;
   unloadBag: (pnr: string) => void;
   addNoRecPassenger: (lastName: string, firstName: string, flightId: string) => void;
@@ -749,6 +750,32 @@ export const useAirportStore = create<AirportStore>()(
         if (get().isDatabaseReady) {
           get().syncToDatabase().catch(() => {});
         }
+      },
+
+      deboardPassenger: (pnr) => {
+        const state = get();
+        const passenger = state.passengers.find(p => p.pnr === pnr);
+        if (!passenger) {
+          get().addLog(`Cannot deboard passenger - PNR ${pnr} not found`, 'BOARDING', 'WARNING');
+          return false;
+        }
+        if (passenger.status !== 'BOARDED') {
+          get().addLog(`Cannot deboard passenger ${passenger.lastName} (${pnr}) - passenger is not boarded (status: ${passenger.status})`, 'BOARDING', 'WARNING');
+          return false;
+        }
+
+        set((state) => ({
+          passengers: state.passengers.map(p => 
+            p.pnr === pnr ? { ...p, status: 'CHECKED_IN' } : p
+          )
+        }));
+        get().addLog(`Passenger ${passenger.lastName} (${pnr}) debarked`, 'BOARDING', 'INFO');
+        
+        // Sync to database
+        if (get().isDatabaseReady) {
+          get().syncToDatabase().catch(() => {});
+        }
+        return true;
       },
 
       loadBag: (pnr) => {
