@@ -594,12 +594,59 @@ export const useAirportStore = create<AirportStore>()(
         if (!passenger) return false;
         if (passenger.status !== 'BOOKED') return false; 
 
+        // Auto-assign seat if passenger doesn't have one
+        let assignedSeat = passenger.seat;
+        if (!assignedSeat || assignedSeat === 'REQ' || assignedSeat === 'TBA') {
+          // Get all passengers on the same flight
+          const flightPassengers = state.passengers.filter(p => p.flightId === passenger.flightId);
+          const occupiedSeats = new Set(flightPassengers
+            .filter(p => p.seat && p.seat !== 'REQ' && p.seat !== 'TBA' && p.seat !== 'SBY')
+            .map(p => p.seat));
+          
+          // Find first available seat (rows 1-30, seats A-F)
+          // Start from row 6 (economy) unless passenger type suggests business
+          const startRow = passenger.passengerType === 'STAFF_DUTY' ? 1 : 6;
+          let foundSeat = null;
+          
+          for (let row = startRow; row <= 30 && !foundSeat; row++) {
+            for (const seatLetter of ['A', 'B', 'C', 'D', 'E', 'F']) {
+              const seatId = `${row}${seatLetter}`;
+              if (!occupiedSeats.has(seatId)) {
+                foundSeat = seatId;
+                break;
+              }
+            }
+          }
+          
+          // If no seat found in economy, try business (rows 1-5)
+          if (!foundSeat && startRow > 5) {
+            for (let row = 1; row <= 5 && !foundSeat; row++) {
+              for (const seatLetter of ['A', 'B', 'C', 'D', 'E', 'F']) {
+                const seatId = `${row}${seatLetter}`;
+                if (!occupiedSeats.has(seatId)) {
+                  foundSeat = seatId;
+                  break;
+                }
+              }
+            }
+          }
+          
+          if (foundSeat) {
+            assignedSeat = foundSeat;
+            get().addLog(`Auto-assigned seat ${foundSeat} to ${passenger.lastName} (${pnr})`, 'CHECK-IN', 'INFO');
+          } else {
+            // No available seats, assign standby
+            assignedSeat = 'SBY';
+            get().addLog(`No available seats - assigned SBY to ${passenger.lastName} (${pnr})`, 'CHECK-IN', 'WARNING');
+          }
+        }
+
         set((state) => ({
           passengers: state.passengers.map(p => 
-            p.pnr === pnr ? { ...p, status: 'CHECKED_IN', securityStatus: 'PENDING' } : p
+            p.pnr === pnr ? { ...p, status: 'CHECKED_IN', securityStatus: 'PENDING', seat: assignedSeat } : p
           )
         }));
-        get().addLog(`Passenger ${passenger.lastName} (${pnr}) checked in`, 'CHECK-IN', 'SUCCESS');
+        get().addLog(`Passenger ${passenger.lastName} (${pnr}) checked in${assignedSeat && assignedSeat !== passenger.seat ? ` - seat ${assignedSeat}` : ''}`, 'CHECK-IN', 'SUCCESS');
         
         // Send check-in confirmation email automatically
         try {
