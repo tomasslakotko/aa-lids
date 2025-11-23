@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useAirportStore } from '../store/airportStore';
 import type { Passenger } from '../store/airportStore';
 import clsx from 'clsx';
@@ -24,10 +24,8 @@ export const GateScreenApp = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // Use useMemo to ensure selectedFlight updates reactively when flights array changes
-  const selectedFlight = useMemo(() => {
-    return flights.find(f => f.id === selectedFlightId);
-  }, [flights, selectedFlightId]);
+  // Direct reactive access - Zustand will automatically re-render when flights change
+  const selectedFlight = flights.find(f => f.id === selectedFlightId);
 
   // Filter passengers for the standby/upgrade list
   // Realistically, we'd filter by 'Standby' or 'Upgrade Requested'. 
