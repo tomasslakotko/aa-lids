@@ -44,17 +44,21 @@ export const GateScreenApp = () => {
   // Use useMemo to ensure lists update when passengers change (including real-time updates)
   const standbyList = useMemo(() => {
     if (!selectedFlight) return [];
-    return passengers
+    const list = passengers
       .filter(p => p.flightId === selectedFlight.id && (p.passengerType === 'STAFF_SBY' || p.seat === 'SBY' || p.seat === 'REQ'))
       .slice(0, 10);
+    console.log('Gate Screen: Standby list updated', { count: list.length, flightId: selectedFlight.id, totalPassengers: passengers.length });
+    return list;
   }, [passengers, selectedFlight?.id]);
 
   // Upgrade list (economy passengers who are checked in and not in business class)
   const upgradeList = useMemo(() => {
     if (!selectedFlight) return [];
-    return passengers
+    const list = passengers
       .filter(p => p.flightId === selectedFlight.id && p.status === 'CHECKED_IN' && !p.seat.startsWith('1'))
       .slice(0, 5);
+    console.log('Gate Screen: Upgrade list updated', { count: list.length, flightId: selectedFlight.id });
+    return list;
   }, [passengers, selectedFlight?.id]);
 
   if (!selectedFlight) {
