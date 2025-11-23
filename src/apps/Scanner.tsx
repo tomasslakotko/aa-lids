@@ -136,133 +136,106 @@ export const ScannerApp = () => {
       return;
     }
 
-    // Set scanning state first so the element gets rendered
-    setIsScanning(true);
-    setScanError(null);
-    
-    // For iOS/iPad, we need to ensure the permission request happens in the same user gesture context
-    // Use requestAnimationFrame to allow DOM update, but keep it minimal for iOS compatibility
-    requestAnimationFrame(() => {
-      // Minimal delay to ensure element is rendered, but keep it short for iOS gesture chain
-      setTimeout(async () => {
-        if (!scannerElementRef.current) {
-          setIsScanning(false);
-          setScanError('Scanner element not found');
-          return;
+    // For iOS, we need the element to exist before starting
+    // Pre-render it but keep it hidden until we start scanning
+    if (!scannerElementRef.current) {
+      setScanError('Scanner element not ready. Please try again.');
+      return;
+    }
+
+    try {
+      const elementId = scannerElementRef.current.id || 'scanner-qr-reader';
+      const html5QrCode = new Html5Qrcode(elementId);
+      scannerRef.current = html5QrCode;
+      
+      // Set scanning state - this will show the element
+      setIsScanning(true);
+      setScanError(null);
+      
+      // Start the scanner immediately - html5-qrcode will request camera permission
+      // On iOS, this must be called directly from user gesture (button click)
+      // Try environment camera first (back camera on mobile)
+      try {
+        await html5QrCode.start(
+          { facingMode: 'environment' },
+          {
+            fps: 10,
+            qrbox: { width: 300, height: 300 },
+            aspectRatio: 1.0,
+          },
+          (decodedText) => {
+            processScannedCode(decodedText);
+          },
+          (_errorMessage) => {
+            // Ignore scanning errors
+          }
+        );
+      } catch (envErr: any) {
+        // If environment camera fails, try user-facing camera (front camera)
+        if (envErr.name === 'NotFoundError' || envErr.message?.includes('environment') || envErr.message?.includes('not found')) {
+          console.log('Environment camera not found, trying user-facing camera');
+          await html5QrCode.start(
+            { facingMode: 'user' },
+            {
+              fps: 10,
+              qrbox: { width: 300, height: 300 },
+              aspectRatio: 1.0,
+            },
+            (decodedText) => {
+              processScannedCode(decodedText);
+            },
+            (_errorMessage) => {
+              // Ignore scanning errors
+            }
+          );
+        } else {
+          throw envErr;
+        }
+      }
+    } catch (err: any) {
+        console.error('Scanner error:', err);
+        console.error('Error details:', {
+          name: err.name,
+          message: err.message,
+          stack: err.stack
+        });
+        
+        let errorMsg = 'Failed to start camera';
+        
+        // Check for specific error types
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          errorMsg = 'Camera access denied. Please allow camera access in your browser settings and try again.';
+        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+          errorMsg = 'No camera found. Please connect a camera and try again.';
+        } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+          errorMsg = 'Camera is already in use by another application. Please close other apps using the camera.';
+        } else if (err.message) {
+          const msg = err.message.toLowerCase();
+          if (msg.includes('permission') || msg.includes('denied') || msg.includes('not allowed')) {
+            errorMsg = 'Camera access denied. Please allow camera access in your browser settings.';
+          } else if (msg.includes('not found') || msg.includes('no device')) {
+            errorMsg = 'No camera found. Please connect a camera.';
+          } else if (msg.includes('in use') || msg.includes('busy')) {
+            errorMsg = 'Camera is already in use. Please close other apps using the camera.';
+          } else if (msg.includes('https') || msg.includes('secure')) {
+            errorMsg = 'Camera access requires HTTPS. Please access this app via HTTPS or localhost.';
+          } else {
+            errorMsg = `Camera error: ${err.message}`;
+          }
         }
         
-        try {
-          const elementId = scannerElementRef.current.id || 'scanner-qr-reader';
-          const html5QrCode = new Html5Qrcode(elementId);
-          scannerRef.current = html5QrCode;
-          
-          // Start the scanner - html5-qrcode will request camera permission
-          // On iOS, this must be called from user gesture (which it is via button click)
-          // Try environment camera first (back camera on mobile)
+        setScanError(errorMsg);
+        setIsScanning(false);
+        if (scannerRef.current) {
           try {
-            await html5QrCode.start(
-              { facingMode: 'environment' },
-              {
-                fps: 10,
-                qrbox: { width: 300, height: 300 },
-                aspectRatio: 1.0,
-              },
-              (decodedText) => {
-                processScannedCode(decodedText);
-              },
-              (_errorMessage) => {
-                // Ignore scanning errors
-              }
-            );
-          } catch (envErr: any) {
-            // If environment camera fails, try user-facing camera (front camera)
-            if (envErr.name === 'NotFoundError' || envErr.message?.includes('environment') || envErr.message?.includes('not found')) {
-              console.log('Environment camera not found, trying user-facing camera');
-              await html5QrCode.start(
-                { facingMode: 'user' },
-                {
-                  fps: 10,
-                  qrbox: { width: 300, height: 300 },
-                  aspectRatio: 1.0,
-                },
-                (decodedText) => {
-                  processScannedCode(decodedText);
-                },
-                (_errorMessage) => {
-                  // Ignore scanning errors
-                }
-              );
-            } else {
-              throw envErr;
-            }
+            scannerRef.current.stop().catch(() => {});
+            scannerRef.current.clear();
+          } catch (e) {
+            console.error('Error cleaning up scanner:', e);
           }
-        } catch (err: any) {
-          console.error('Scanner error:', err);
-          console.error('Error details:', {
-            name: err.name,
-            message: err.message,
-            stack: err.stack
-          });
-          
-          let errorMsg = 'Failed to start camera';
-          
-          // Check for specific error types
-          if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-            errorMsg = 'Camera access denied. Please allow camera access in your browser settings and try again.';
-          } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-            errorMsg = 'No camera found. Please connect a camera and try again.';
-          } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
-            errorMsg = 'Camera is already in use by another application. Please close other apps using the camera.';
-          } else if (err.name === 'OverconstrainedError') {
-            errorMsg = 'Camera does not support required settings. Trying alternative camera...';
-            // Try with simpler constraints
-            try {
-              const html5QrCode = new Html5Qrcode(scannerElementRef.current.id || 'scanner-qr-reader');
-              scannerRef.current = html5QrCode;
-              await html5QrCode.start(
-                { facingMode: 'user' },
-                {
-                  fps: 5,
-                  qrbox: { width: 250, height: 250 },
-                },
-                (decodedText) => {
-                  processScannedCode(decodedText);
-                },
-                (_errorMessage) => {}
-              );
-              return; // Success with fallback
-            } catch (fallbackErr: any) {
-              errorMsg = 'Camera does not support required settings. Please try a different device.';
-            }
-          } else if (err.message) {
-            const msg = err.message.toLowerCase();
-            if (msg.includes('permission') || msg.includes('denied') || msg.includes('not allowed')) {
-              errorMsg = 'Camera access denied. Please allow camera access in your browser settings.';
-            } else if (msg.includes('not found') || msg.includes('no device')) {
-              errorMsg = 'No camera found. Please connect a camera.';
-            } else if (msg.includes('in use') || msg.includes('busy')) {
-              errorMsg = 'Camera is already in use. Please close other apps using the camera.';
-            } else if (msg.includes('https') || msg.includes('secure')) {
-              errorMsg = 'Camera access requires HTTPS. Please access this app via HTTPS or localhost.';
-            } else {
-              errorMsg = `Camera error: ${err.message}`;
-            }
-          }
-          
-          setScanError(errorMsg);
-          setIsScanning(false);
-          if (scannerRef.current) {
-            try {
-              scannerRef.current.stop().catch(() => {});
-              scannerRef.current.clear();
-            } catch (e) {
-              console.error('Error cleaning up scanner:', e);
-            }
-            scannerRef.current = null;
-          }
+          scannerRef.current = null;
         }
-      }, 100);
-    });
+      }
   };
 
   // Stop camera scanner
@@ -374,31 +347,38 @@ export const ScannerApp = () => {
             <Plane size={64} className="mx-auto mb-4 opacity-50" />
             <p className="text-xl">Please select a flight to start scanning</p>
           </div>
-        ) : !isScanning ? (
-          <div className="text-center">
-            <Camera size={64} className="mx-auto mb-4 text-gray-400" />
-            <p className="text-xl mb-4 text-gray-300">Ready to scan boarding passes</p>
-            <button
-              onClick={async (e) => {
-                e.preventDefault();
-                await startScanner();
-              }}
-              className="px-8 py-4 bg-blue-600 hover:bg-blue-700 rounded-lg text-lg font-bold flex items-center gap-3 mx-auto"
-            >
-              <Camera size={24} />
-              Start Scanning
-            </button>
-          </div>
         ) : (
           <>
+            {/* Always render the scanner element (hidden when not scanning) for iOS compatibility */}
             <div 
               id="scanner-qr-reader" 
               ref={scannerElementRef}
-              className="w-full max-w-2xl"
+              className={clsx(
+                "w-full max-w-2xl",
+                !isScanning && "hidden"
+              )}
             ></div>
-            <p className="mt-4 text-gray-300 text-center">
-              Point camera at boarding pass QR code
-            </p>
+            
+            {!isScanning ? (
+              <div className="text-center">
+                <Camera size={64} className="mx-auto mb-4 text-gray-400" />
+                <p className="text-xl mb-4 text-gray-300">Ready to scan boarding passes</p>
+                <button
+                  onClick={async (e) => {
+                    e.preventDefault();
+                    await startScanner();
+                  }}
+                  className="px-8 py-4 bg-blue-600 hover:bg-blue-700 rounded-lg text-lg font-bold flex items-center gap-3 mx-auto"
+                >
+                  <Camera size={24} />
+                  Start Scanning
+                </button>
+              </div>
+            ) : (
+              <p className="mt-4 text-gray-300 text-center">
+                Point camera at boarding pass QR code
+              </p>
+            )}
           </>
         )}
 
