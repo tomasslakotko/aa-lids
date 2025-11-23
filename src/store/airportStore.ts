@@ -559,6 +559,11 @@ export const useAirportStore = create<AirportStore>()(
         set((state) => ({
           flights: state.flights.map(f => f.id === flightId ? { ...f, gateMessage: message } : f)
         }));
+        get().addLog(`Gate message updated for flight ${flightId}`, 'GATE', 'INFO');
+        // Sync to database
+        if (get().isDatabaseReady) {
+          get().syncToDatabase().catch(() => {});
+        }
       },
 
       updateFlightDetails: (flightId, updates) => {
@@ -566,6 +571,10 @@ export const useAirportStore = create<AirportStore>()(
           flights: state.flights.map(f => f.id === flightId ? { ...f, ...updates } : f)
         }));
         get().addLog(`Flight details updated for ${flightId}`, 'OCC', 'INFO');
+        // Sync to database
+        if (get().isDatabaseReady) {
+          get().syncToDatabase().catch(() => {});
+        }
       },
 
       checkInPassenger: async (pnr) => {
