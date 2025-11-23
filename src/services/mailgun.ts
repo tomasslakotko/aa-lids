@@ -277,3 +277,178 @@ export const generateBookingConfirmationHtml = (params: {
   `.trim();
 };
 
+// Generate check-in confirmation HTML email (similar to TAP style)
+export const generateCheckInConfirmationHtml = (params: {
+  passengerName: string;
+  pnr: string;
+  flightNumber: string;
+  origin: string;
+  originCity: string;
+  destination: string;
+  destinationCity: string;
+  departureDate: string;
+  departureTime: string;
+  arrivalDate: string;
+  arrivalTime: string;
+  gate: string;
+  seat: string;
+  boardingTime: string;
+  bagCount: number;
+}): string => {
+  const { passengerName, pnr, flightNumber, origin, originCity, destination, destinationCity, 
+          departureDate, departureTime, arrivalDate, arrivalTime, gate, seat, boardingTime, bagCount } = params;
+  
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  };
+
+  const formatTime = (timeStr: string) => {
+    // If it's already in HH:mm format, return it
+    if (timeStr.match(/^\d{2}:\d{2}$/)) return timeStr;
+    // Otherwise try to parse it
+    const date = new Date(timeStr);
+    return date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+  };
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f5f5f5; }
+    .container { max-width: 700px; margin: 20px auto; background-color: #ffffff; }
+    .header { padding: 30px 20px; background-color: #ffffff; border-bottom: 2px solid #e0e0e0; }
+    .greeting { font-size: 16px; color: #333; margin-bottom: 20px; }
+    .confirmation-text { font-size: 14px; color: #333; line-height: 1.6; margin-bottom: 15px; }
+    .boarding-pass-link { margin: 20px 0; }
+    .boarding-pass-link a { color: #0066cc; text-decoration: none; font-weight: bold; }
+    .disclaimer { font-size: 12px; color: #666; font-style: italic; margin: 15px 0; }
+    .section-divider { border-top: 1px solid #e0e0e0; margin: 30px 0; }
+    .section-title { font-size: 18px; font-weight: bold; color: #333; margin: 20px 0 15px 0; }
+    .booking-info { background-color: #f9f9f9; padding: 15px; margin: 15px 0; border-left: 4px solid #0066cc; }
+    .info-row { margin: 8px 0; font-size: 14px; }
+    .info-label { font-weight: bold; color: #333; display: inline-block; width: 150px; }
+    .info-value { color: #666; }
+    .flight-details { margin: 20px 0; }
+    .flight-row { display: flex; align-items: center; margin: 15px 0; padding: 15px; background-color: #f9f9f9; border-radius: 4px; }
+    .flight-icon { font-size: 24px; margin: 0 15px; }
+    .flight-info { flex: 1; }
+    .flight-label { font-size: 12px; color: #666; text-transform: uppercase; margin-bottom: 5px; }
+    .flight-value { font-size: 16px; font-weight: bold; color: #333; }
+    .flight-time { font-size: 14px; color: #666; margin-top: 5px; }
+    .boarding-gate { background-color: #fff3cd; padding: 15px; margin: 20px 0; border-left: 4px solid #ffc107; }
+    .boarding-gate strong { color: #856404; }
+    .baggage-section { margin: 20px 0; }
+    .baggage-box { background-color: #e7f3ff; padding: 15px; margin: 15px 0; border-left: 4px solid #0066cc; }
+    .tips-section { margin: 20px 0; }
+    .tips-box { background-color: #fff9e6; padding: 15px; margin: 15px 0; border-left: 4px solid #ffc107; }
+    .important-section { margin: 20px 0; }
+    .important-box { background-color: #ffe6e6; padding: 15px; margin: 15px 0; border-left: 4px solid #dc3545; }
+    .important-box strong { color: #721c24; }
+    .footer { padding: 20px; background-color: #f9f9f9; text-align: center; font-size: 12px; color: #666; border-top: 1px solid #e0e0e0; }
+    .link { color: #0066cc; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="greeting">Dear ${passengerName},</div>
+      <div class="confirmation-text">
+        We confirm that you have been checked-in successfully. ${seat === 'SBY' || seat === 'STANDBY' ? '<strong>Please note you are on Standby for one or more Flight.</strong>' : ''}
+      </div>
+      <div class="confirmation-text">
+        Please find your boarding pass details below. You will be required to present your boarding pass at different security checkpoints at the airport.
+      </div>
+      <div class="disclaimer">
+        Apart from the attached boarding pass, this email content has no regulatory value. It is not required to print this email.
+      </div>
+      <div class="boarding-pass-link">
+        <a href="#" class="link">📋 Get your Boarding Pass here!</a>
+      </div>
+    </div>
+    
+    <div class="section-divider"></div>
+    
+    <div class="section-title">Booking Details</div>
+    <div class="booking-info">
+      <div class="info-row">
+        <span class="info-label">Passenger:</span>
+        <span class="info-value">${passengerName.toUpperCase()}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Booking Reference:</span>
+        <span class="info-value">${pnr}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Flight:</span>
+        <span class="info-value">${flightNumber}</span>
+      </div>
+    </div>
+    
+    <div class="flight-details">
+      <div class="flight-row">
+        <div class="flight-icon">✈️</div>
+        <div class="flight-info">
+          <div class="flight-label">From</div>
+          <div class="flight-value">${originCity || origin}</div>
+          <div class="flight-time">${formatDate(departureDate)} - ${formatTime(departureTime)}</div>
+        </div>
+      </div>
+      
+      <div class="flight-row">
+        <div class="flight-icon">✈️</div>
+        <div class="flight-info">
+          <div class="flight-label">To</div>
+          <div class="flight-value">${destinationCity || destination}</div>
+          <div class="flight-time">${formatDate(arrivalDate)} - ${formatTime(arrivalTime)}</div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="boarding-gate">
+      <strong>Boarding Gate Report Time:</strong> Please report at the boarding gate at the latest by: ${formatTime(boardingTime)}
+    </div>
+    
+    ${bagCount > 0 ? `
+    <div class="section-title">Baggage Information</div>
+    <div class="baggage-box">
+      <strong>For checked-in luggage:</strong><br>
+      You have ${bagCount} checked bag${bagCount > 1 ? 's' : ''}.<br>
+      Please make sure that your baggage complies with the maximum weight and size restrictions on your flight (refer to your boarding pass for more details).<br>
+      Go to the airport baggage drop-off desk before the check-in deadline for your flight, indicated on your boarding pass.
+    </div>
+    ` : `
+    <div class="section-title">Baggage Information</div>
+    <div class="baggage-box">
+      <strong>If not travelling with checked baggage:</strong><br>
+      Go directly to the boarding gate before the time limit (last call) indicated on your boarding pass.
+    </div>
+    `}
+    
+    <div class="tips-section">
+      <div class="section-title">Few tips for your journey</div>
+      <div class="tips-box">
+        Please arrive early at the airport to pass the security formalities and respect the time limit for boarding (last call). If you are not present before this deadline, you are not guaranteed to get on board of your flight.
+      </div>
+    </div>
+    
+    <div class="important-section">
+      <div class="section-title">IMPORTANT:</div>
+      <div class="important-box">
+        <strong>Please make sure that you are in possession of the regulatory documents required for your journey and have read the list of prohibited items in the cabin and in the hold.</strong><br><br>
+        Make sure that nobody has been able to interfere with your luggage without your knowledge.<br><br>
+        <strong>Warning:</strong> the transport of liquids (gel, cream, ...) is restricted in the cabin.
+      </div>
+    </div>
+    
+    <div class="footer">
+      Thank you for choosing our airline, we wish you a pleasant journey.
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+};
+

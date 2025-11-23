@@ -27,7 +27,7 @@ const Tab = ({ label, active, onClick, first }: { label: string, active: boolean
   </button>
 );
 
-const LegacyInput = ({ label, value, onChange, width = "w-full", placeholder = "" }: any) => (
+const LegacyInput = ({ label, value, onChange, width = "w-full", placeholder = "", readOnly = false }: any) => (
   <div className="flex flex-col">
     <label className="text-[10px] text-blue-800 font-bold mb-0.5">{label}</label>
     <div className="relative">
@@ -35,6 +35,7 @@ const LegacyInput = ({ label, value, onChange, width = "w-full", placeholder = "
         type="text" 
         value={value}
         onChange={onChange}
+        readOnly={readOnly || !onChange}
         placeholder={placeholder}
         className={`h-6 border border-[#7F9DB9] bg-white px-1 text-xs outline-none focus:border-blue-500 ${width}`}
       />
@@ -136,27 +137,48 @@ const BoardingPass = ({ passenger, flight, passengers, flights }: { passenger: a
   const originCode = flight.origin;
   const destCode = flight.destination;
   
-  // Generate sequence number and ETKT
-  const sequenceNo = String(Math.floor(Math.random() * 999) + 1).padStart(3, '0');
-  const etkt = String(Math.floor(Math.random() * 100000000000000) + 10000000000000);
-  
   // Passenger name
   const passengerName = `${passenger.lastName}/${passenger.firstName}`.toUpperCase();
   
+  // Generate deterministic sequence number and ETKT based on passenger/flight data
+  // This ensures the same boarding pass always has the same QR code
+  const generateDeterministicHash = (str: string): number => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    return Math.abs(hash);
+  };
+  
+  const boardingPassKey = `${passenger.pnr}-${flight.id}-${passenger.seat}-${passenger.id}`;
+  const hash = generateDeterministicHash(boardingPassKey);
+  
+  // Generate sequence number (001-999) based on hash
+  const sequenceNo = String((hash % 999) + 1).padStart(3, '0');
+  
+  // Generate ETKT (14 digits) based on hash - format: 257XXXXXXXXXXXX
+  const etktBase = hash % 1000000000000; // 12 digits
+  const etkt = `257${String(etktBase).padStart(12, '0')}`;
+  
   // Generate QR code data (JSON with passenger and flight info)
+  // This should match exactly what's displayed on the boarding pass
   const qrData = JSON.stringify({
     pnr: passenger.pnr,
     flight: flight.flightNumber,
-    seat: passenger.seat,
+    seat: passenger.seat || 'TBA',
     name: passengerName,
     date: dateStr,
     origin: `${originCity}/${originCode}`,
     destination: `${destCity}/${destCode}`,
-    gate: flight.gate,
+    gate: flight.gate || 'TBA',
     boarding: boardingTime,
     departure: flight.std,
     class: passengerClass,
-    etkt: etkt
+    etkt: etkt,
+    sequence: sequenceNo,
+    passengerId: passenger.id
   });
   
   return (
@@ -385,6 +407,7 @@ export const CheckInApp = () => {
   const passengers = useAirportStore((state) => state.passengers);
   const flights = useAirportStore((state) => state.flights);
   const checkInPassenger = useAirportStore((state) => state.checkInPassenger);
+  const cancelCheckIn = useAirportStore((state) => state.cancelCheckIn);
   const updatePassengerDetails = useAirportStore((state) => state.updatePassengerDetails);
 
   // Derived Data
@@ -396,10 +419,22 @@ export const CheckInApp = () => {
     : [];
     
   // Sort segments by flight number for now (ideal would be by time, but need full flight objects)
-  const sortedSegments = passengerSegments.map(p => {
-     const f = flights.find(flight => flight.id === p.flightId);
-     return { passenger: p, flight: f };
-  }).sort((a, b) => (a.flight?.std || '').localeCompare(b.flight?.std || ''));
+  // Filter out segments where the flight doesn't exist (data inconsistency)
+  const sortedSegments = passengerSegments
+    .map(p => {
+       const f = flights.find(flight => flight.id === p.flightId);
+       if (!f) {
+         console.warn(`CheckIn: Passenger ${p.id} has invalid flightId: ${p.flightId}`);
+       }
+       return { passenger: p, flight: f };
+    })
+    .filter(seg => seg.flight !== undefined) // Only show segments with valid flights
+    .sort((a, b) => (a.flight?.std || '').localeCompare(b.flight?.std || ''));
+  
+  // Debug: Log segment count
+  if (selectedPnr && passengerSegments.length !== sortedSegments.length) {
+    console.warn(`CheckIn: PNR ${selectedPnr} has ${passengerSegments.length} passenger records but only ${sortedSegments.length} valid flight segments`);
+  }
 
   const foundFlight = foundPassenger ? flights.find(f => f.id === foundPassenger.flightId) : null;
   
@@ -454,6 +489,20 @@ export const CheckInApp = () => {
       setShowFqtvModal(true);
   };
 
+  const handleCancelCheckIn = () => {
+      if (foundPassenger && foundPassenger.status === 'CHECKED_IN') {
+          if (confirm(`Cancel check-in for ${foundPassenger.lastName} ${foundPassenger.firstName} (${foundPassenger.pnr})?`)) {
+              const success = cancelCheckIn(foundPassenger.pnr);
+              if (success) {
+                  alert('CHECK-IN CANCELLED');
+                  setCurrentScreen('ACCEPTANCE');
+              }
+          }
+      } else {
+          alert('Passenger is not checked in');
+      }
+  };
+
   const handleIdentify = () => {
     const term = (identPnr || identName).toUpperCase();
     const match = passengers.find(p => p.pnr === term || p.lastName === term);
@@ -468,13 +517,13 @@ export const CheckInApp = () => {
     }
   };
 
-  const handleAccept = () => {
+  const handleAccept = async () => {
     if (foundPassenger && foundPassenger.status === 'BOOKED') {
-      checkInPassenger(foundPassenger.pnr);
       updatePassengerDetails(foundPassenger.pnr, { 
         bagCount: parseInt(bagPcs), 
         hasBags: parseInt(bagPcs) > 0 
       });
+      await checkInPassenger(foundPassenger.pnr);
       alert('PASSENGER ACCEPTED');
       setCurrentScreen('IDENTIFICATION');
       setIdentName('');
@@ -562,6 +611,7 @@ export const CheckInApp = () => {
                 <button disabled={!foundPassenger} onClick={handleFqtv} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Add FQTV</span></button>
                 <button disabled={!foundPassenger} onClick={handleBaggage} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Baggage</span></button>
                 <button disabled={!foundPassenger} onClick={handlePrint} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Print BP/Tags</span><span className="text-gray-400">P</span></button>
+                <button disabled={!foundPassenger || foundPassenger?.status !== 'CHECKED_IN'} onClick={handleCancelCheckIn} className="w-full text-left flex justify-between hover:bg-[#DC3545] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span className="text-red-600">Cancel Check-In</span></button>
             </div>
             
             <div className="bg-gradient-to-b from-[#EBE9E3] to-[#D4D0C8] px-2 py-1 font-bold border-b border-white border-t border-[#A0A0A0] text-gray-700">System</div>
@@ -623,9 +673,9 @@ export const CheckInApp = () => {
                             <LegacyInput value={identFlight} onChange={(e: any) => setIdentFlight(e.target.value)} width="w-20" />
                         </div>
                         <label className="font-bold text-gray-800">Date:</label>
-                        <LegacyInput value={new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase()} width="w-24" />
+                        <LegacyInput value={new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase()} width="w-24" readOnly />
                         <label className="font-bold text-gray-800">From:</label>
-                        <LegacyInput value="RIX" width="w-16" />
+                        <LegacyInput value="RIX" width="w-16" readOnly />
                         <label className="font-bold text-gray-800">To:</label>
                         <LegacyInput width="w-16" />
                     </div>

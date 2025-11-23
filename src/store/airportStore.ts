@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { initializeDatabase, loadAllData, saveAllData } from '../services/database';
 
 // --- Types ---
 
@@ -100,7 +101,8 @@ interface AirportStore {
   updateFlightStatus: (flightId: string, status: FlightStatus) => void;
   updateGateMessage: (flightId: string, message: string) => void;
   updateFlightDetails: (flightId: string, updates: Partial<Flight>) => void;
-  checkInPassenger: (pnr: string) => boolean;
+  checkInPassenger: (pnr: string) => Promise<boolean>;
+  cancelCheckIn: (pnr: string) => boolean;
   updatePassengerDetails: (pnr: string, details: Partial<Passenger>) => void;
   offloadPassenger: (pnr: string) => void;
   loadBag: (pnr: string) => void;
@@ -541,6 +543,10 @@ export const useAirportStore = create<AirportStore>()(
           flights: state.flights.map(f => f.id === flightId ? { ...f, status } : f)
         }));
         get().addLog(`Flight ${flightId} status changed to ${status}`, 'OCC', 'INFO');
+        // Sync to database (fire and forget)
+        if (get().isDatabaseReady) {
+          get().syncToDatabase().catch(() => {});
+        }
       },
 
       updateGateMessage: (flightId, message) => {
@@ -556,7 +562,7 @@ export const useAirportStore = create<AirportStore>()(
         get().addLog(`Flight details updated for ${flightId}`, 'OCC', 'INFO');
       },
 
-      checkInPassenger: (pnr) => {
+      checkInPassenger: async (pnr) => {
         const state = get();
         const passenger = state.passengers.find(p => p.pnr === pnr);
         if (!passenger) return false;
@@ -568,6 +574,125 @@ export const useAirportStore = create<AirportStore>()(
           )
         }));
         get().addLog(`Passenger ${passenger.lastName} (${pnr}) checked in`, 'CHECK-IN', 'SUCCESS');
+        
+        // Send check-in confirmation email automatically
+        try {
+          // Get fresh state to ensure we have latest emails
+          const currentState = get();
+          
+          // Find email address from previous email confirmations for this PNR
+          // Try to find any email with this PNR (prefer SENT, but accept any status)
+          const previousEmail = currentState.emails.find(e => e.pnr === pnr && e.status === 'SENT') ||
+                                currentState.emails.find(e => e.pnr === pnr);
+          const emailAddress = previousEmail?.to;
+          
+          // Debug logging
+          if (!emailAddress) {
+            console.log(`[Check-in Email] No email found for PNR ${pnr}`);
+            console.log(`[Check-in Email] Total emails in store: ${currentState.emails.length}`);
+            console.log(`[Check-in Email] Emails for this PNR:`, currentState.emails.filter(e => e.pnr === pnr));
+          }
+          
+          if (emailAddress) {
+            // Get flight details
+            const flight = state.flights.find(f => f.id === passenger.flightId);
+            if (flight) {
+              // Parse departure time and calculate boarding time (40 minutes before departure)
+              const parseTime = (timeStr: string): Date => {
+                if (timeStr.match(/^\d{2}:\d{2}$/)) {
+                  // Format: HH:mm
+                  const [hours, minutes] = timeStr.split(':').map(Number);
+                  const date = new Date();
+                  date.setHours(hours, minutes, 0, 0);
+                  return date;
+                }
+                return new Date(timeStr);
+              };
+              
+              const departureTime = parseTime(flight.std);
+              const boardingTime = new Date(departureTime.getTime() - 40 * 60 * 1000); // 40 minutes before
+              
+              // Calculate arrival time (estimate 2 hours for most flights)
+              const arrivalTime = new Date(departureTime.getTime() + 2 * 60 * 60 * 1000);
+              
+              // Format dates
+              const formatDate = (date: Date) => {
+                return date.toISOString().split('T')[0];
+              };
+              
+              const formatTime = (date: Date) => {
+                return date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+              };
+              
+              // Generate check-in email HTML
+              const { generateCheckInConfirmationHtml } = await import('../services/mailgun');
+              const passengerName = `${passenger.title || ''} ${passenger.firstName} ${passenger.lastName}`.trim();
+              
+              const htmlContent = generateCheckInConfirmationHtml({
+                passengerName,
+                pnr,
+                flightNumber: flight.flightNumber,
+                origin: flight.origin,
+                originCity: flight.originCity || flight.origin,
+                destination: flight.destination,
+                destinationCity: flight.destinationCity || flight.destination,
+                departureDate: formatDate(departureTime),
+                departureTime: formatTime(departureTime),
+                arrivalDate: formatDate(arrivalTime),
+                arrivalTime: formatTime(arrivalTime),
+                gate: flight.gate || 'TBA',
+                seat: passenger.seat || 'TBA',
+                boardingTime: formatTime(boardingTime),
+                bagCount: passenger.bagCount || 0
+              });
+              
+              // Generate text version
+              const textContent = `Dear ${passengerName},\n\nWe confirm that you have been checked-in successfully for flight ${flight.flightNumber}.\n\nBooking Reference: ${pnr}\nFlight: ${flight.flightNumber}\nFrom: ${flight.originCity || flight.origin}\nTo: ${flight.destinationCity || flight.destination}\nDeparture: ${formatDate(departureTime)} ${formatTime(departureTime)}\nArrival: ${formatDate(arrivalTime)} ${formatTime(arrivalTime)}\nGate: ${flight.gate || 'TBA'}\nSeat: ${passenger.seat || 'TBA'}\nBoarding Time: ${formatTime(boardingTime)}\n\nPlease report at the boarding gate at the latest by: ${formatTime(boardingTime)}\n\nThank you for choosing our airline, we wish you a pleasant journey.`;
+              
+              // Send email
+              await get().sendEmailConfirmation(
+                pnr,
+                emailAddress,
+                `Check-in Confirmation - Flight ${flight.flightNumber}`,
+                textContent,
+                htmlContent
+              );
+              
+              get().addLog(`Check-in confirmation email sent to ${emailAddress} for ${pnr}`, 'CHECK-IN', 'SUCCESS');
+            }
+          } else {
+            get().addLog(`No email address found for PNR ${pnr} - check-in email not sent`, 'CHECK-IN', 'WARNING');
+          }
+        } catch (error: any) {
+          get().addLog(`Failed to send check-in email for ${pnr}: ${error.message}`, 'CHECK-IN', 'ERROR');
+        }
+        
+        // Sync to database
+        if (get().isDatabaseReady) {
+          get().syncToDatabase().catch(() => {});
+        }
+        return true;
+      },
+
+      cancelCheckIn: (pnr) => {
+        const state = get();
+        const passenger = state.passengers.find(p => p.pnr === pnr);
+        if (!passenger) return false;
+        if (passenger.status !== 'CHECKED_IN') {
+          get().addLog(`Cannot cancel check-in for ${pnr} - passenger is not checked in`, 'CHECK-IN', 'WARNING');
+          return false;
+        }
+
+        set((state) => ({
+          passengers: state.passengers.map(p => 
+            p.pnr === pnr ? { ...p, status: 'BOOKED', securityStatus: undefined } : p
+          )
+        }));
+        get().addLog(`Check-in cancelled for ${passenger.lastName} (${pnr})`, 'CHECK-IN', 'WARNING');
+        // Sync to database
+        if (get().isDatabaseReady) {
+          get().syncToDatabase().catch(() => {});
+        }
         return true;
       },
 
@@ -647,6 +772,10 @@ export const useAirportStore = create<AirportStore>()(
         }));
         const typeLabel = passengerType === 'STAFF_DUTY' ? 'STAFF DUTY' : passengerType === 'STAFF_SBY' ? 'STAFF STANDBY' : 'REVENUE';
         get().addLog(`New Booking Created: ${lastName}/${firstName} (${pnr}) [${typeLabel}]`, 'RESERVATIONS', 'SUCCESS');
+        // Sync to database
+        if (get().isDatabaseReady) {
+          get().syncToDatabase().catch(() => {});
+        }
       },
 
       boardPassenger: (pnr) => {
@@ -909,10 +1038,68 @@ export const useAirportStore = create<AirportStore>()(
           get().addLog(`Email service error for PNR ${pnr}: ${error.message}`, 'RESERVATIONS', 'ERROR');
           return emailId;
         }
+      },
+      
+      // Database Actions
+      syncToDatabase: async () => {
+        try {
+          const state = get();
+          await saveAllData({
+            flights: state.flights,
+            passengers: state.passengers,
+            logs: state.logs,
+            vouchers: state.vouchers,
+            complaints: state.complaints,
+            emails: state.emails
+          });
+        } catch (error: any) {
+          console.error('Error syncing to database:', error);
+          get().addLog(`Database sync failed: ${error.message}`, 'SYSTEM', 'ERROR');
+        }
+      },
+      
+      loadFromDatabase: async () => {
+        try {
+          const data = await loadAllData();
+          set({
+            flights: data.flights.length > 0 ? data.flights : INITIAL_FLIGHTS,
+            passengers: data.passengers,
+            logs: data.logs,
+            vouchers: data.vouchers,
+            complaints: data.complaints,
+            emails: data.emails,
+            isDatabaseReady: true
+          });
+          get().addLog('Data loaded from database', 'SYSTEM', 'SUCCESS');
+        } catch (error: any) {
+          console.error('Error loading from database:', error);
+          set({ isDatabaseReady: false });
+          get().addLog(`Database load failed: ${error.message}. Using local storage.`, 'SYSTEM', 'WARNING');
+        }
       }
     }),
     {
       name: 'airport-storage-v9', // Version bumped for expanded US routes
+      // Keep localStorage as fallback
     }
   )
 );
+
+// Initialize database on module load
+let dbInitialized = false;
+export async function initializeAirportDatabase() {
+  if (dbInitialized) return;
+  
+  try {
+    await initializeDatabase();
+    dbInitialized = true;
+    
+    // Load data from database
+    const store = useAirportStore.getState();
+    await store.loadFromDatabase();
+  } catch (error: any) {
+    console.error('Database initialization failed:', error);
+    // Continue with localStorage fallback
+    useAirportStore.getState().addLog(`Database unavailable: ${error.message}. Using localStorage.`, 'SYSTEM', 'WARNING');
+  }
+}

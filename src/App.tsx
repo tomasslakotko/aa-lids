@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Desktop } from './components/Desktop';
 import { useOSStore } from './store/osStore';
+import { initializeAirportDatabase } from './store/airportStore';
 import { 
   Globe, 
   UserCheck, 
@@ -12,7 +13,8 @@ import {
   Headphones,
   Megaphone,
   MonitorPlay,
-  Tv
+  Tv,
+  Smartphone
 } from 'lucide-react';
 
 // Import Apps
@@ -27,6 +29,7 @@ import { CustomerServiceApp } from './apps/CustomerService';
 import { AnnouncementsApp } from './apps/Announcements';
 import { FIDSApp } from './apps/FIDS';
 import { GateScreenApp } from './apps/GateScreen';
+import { SelfCheckInApp } from './apps/SelfCheckIn';
 
 function App() {
   const registerApp = useOSStore((state) => state.registerApp);
@@ -34,6 +37,9 @@ function App() {
   const closeWindow = useOSStore((state) => state.closeWindow);
 
   useEffect(() => {
+    // Initialize database on app start
+    initializeAirportDatabase();
+    
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && activeWindowId) {
         closeWindow(activeWindowId);
@@ -146,6 +152,15 @@ function App() {
       defaultWidth: 1200,
       defaultHeight: 800,
       folder: 'GATE'
+    });
+
+    registerApp({
+      id: 'selfcheckin',
+      title: 'Self Check-In',
+      icon: Smartphone,
+      component: SelfCheckInApp,
+      defaultWidth: 1200,
+      defaultHeight: 900
     });
 
   }, [registerApp]);

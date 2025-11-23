@@ -778,6 +778,11 @@ export const ReservationsApp = () => {
             
           // Sort flights by departure time
           uniqueFlights.sort((a, b) => a.std.localeCompare(b.std));
+          
+          // Debug: Log how many segments found (can be removed later)
+          if (uniqueFlights.length !== foundEntries.length / uniquePassengers.length) {
+            console.log(`RT Debug: Found ${foundEntries.length} passenger entries, ${uniquePassengers.length} unique passengers, ${uniqueFlights.length} unique flights`);
+          }
 
           addLog(`RP/RIX1A0988/RIX1A0988            AA/SU  ${new Date().toDateString()}   ${term}`);
           
@@ -798,8 +803,14 @@ export const ReservationsApp = () => {
              // Note: simplified logic assuming all pax are on all segments for this PNR, 
              // which matches the createBooking logic.
              
+             // Format date as "10NOV" (day + month)
+             const today = new Date();
+             const day = today.getDate().toString().padStart(2, '0');
+             const month = today.toLocaleDateString('en-GB', { month: 'short' }).toUpperCase();
+             const dateStr = `${day}${month}`;
+             
              const seatCode = foundEntries[0].passengerType === 'STAFF_SBY' ? 'SBY' : 'Y';
-             addLog(`  ${lineIdx}  ${f.flightNumber} ${seatCode} 10NOV ${f.origin}${f.destination} HK${paxCountOnFlight}       ${f.std} ${f.etd}   ${f.gate} E`);
+             addLog(`  ${lineIdx}  ${f.flightNumber} ${seatCode} ${dateStr} ${f.origin}${f.destination} HK${paxCountOnFlight}       ${f.std} ${f.etd}   ${f.gate} E`);
              lineIdx++;
           });
           
