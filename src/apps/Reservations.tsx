@@ -367,11 +367,20 @@ export const ReservationsApp = () => {
        if (wipPnr.segments.length === 0 || wipPnr.passengers.length === 0) {
          addLog('UNABLE TO PRICE: MISSING NAMES OR SEGMENTS');
        } else {
-         // Calculate mock pricing
-         const baseFare = 21.29;
-         const tax = 13.00;
-         const fees = 11.11;
-         const total = baseFare + tax + fees;
+         // Generate random pricing
+         // Base fare: 15-150 EUR (depending on route length)
+         const routeLength = wipPnr.segments[0].destination === 'JFK' || wipPnr.segments[0].destination === 'LAX' || wipPnr.segments[0].destination === 'BKK' || wipPnr.segments[0].destination === 'DOH' ? 'long' : 'short';
+         const baseFareMin = routeLength === 'long' ? 80 : 15;
+         const baseFareMax = routeLength === 'long' ? 150 : 60;
+         const baseFare = Math.round((Math.random() * (baseFareMax - baseFareMin) + baseFareMin) * 100) / 100;
+         
+         // Tax: 8-25 EUR (random)
+         const tax = Math.round((Math.random() * 17 + 8) * 100) / 100;
+         
+         // Fees: 5-20 EUR (random)
+         const fees = Math.round((Math.random() * 15 + 5) * 100) / 100;
+         
+         const total = Math.round((baseFare + tax + fees) * 100) / 100;
          
          setWipPnr(prev => ({ 
            ...prev, 
@@ -404,10 +413,15 @@ export const ReservationsApp = () => {
        if (wipPnr.segments.length === 0 || wipPnr.passengers.length === 0) {
          addLog('UNABLE TO PRICE: MISSING NAMES OR SEGMENTS');
        } else {
-         const baseFare = 21.29;
-         const tax = 13.00;
-         const fees = 11.11;
-         const total = baseFare + tax + fees;
+         // Generate random pricing (same logic as FXP)
+         const routeLength = wipPnr.segments[0].destination === 'JFK' || wipPnr.segments[0].destination === 'LAX' || wipPnr.segments[0].destination === 'BKK' || wipPnr.segments[0].destination === 'DOH' ? 'long' : 'short';
+         const baseFareMin = routeLength === 'long' ? 80 : 15;
+         const baseFareMax = routeLength === 'long' ? 150 : 60;
+         const baseFare = Math.round((Math.random() * (baseFareMax - baseFareMin) + baseFareMin) * 100) / 100;
+         
+         const tax = Math.round((Math.random() * 17 + 8) * 100) / 100;
+         const fees = Math.round((Math.random() * 15 + 5) * 100) / 100;
+         const total = Math.round((baseFare + tax + fees) * 100) / 100;
          
          const pax = wipPnr.passengers[0];
          const seg = wipPnr.segments[0];
