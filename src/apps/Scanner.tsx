@@ -11,6 +11,7 @@ export const ScannerApp = () => {
   const [lastScanned, setLastScanned] = useState<{ name: string; pnr: string; success: boolean } | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const scannerElementRef = useRef<HTMLDivElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
 
   const flights = useAirportStore((state) => state.flights);
   const passengers = useAirportStore((state) => state.passengers);
@@ -24,6 +25,103 @@ export const ScannerApp = () => {
     passengers.filter(p => p.flightId === selectedFlightId),
     [passengers, selectedFlightId]
   );
+
+  // Initialize AudioContext
+  useEffect(() => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+  }, []);
+
+  // Play success sound (pleasant ding-dong)
+  const playSuccessSound = async () => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    const ctx = audioContextRef.current;
+    
+    // iOS/iPad requires AudioContext to be resumed after user interaction
+    if (ctx.state === 'suspended') {
+      try {
+        await ctx.resume();
+      } catch (e) {
+        console.warn('Could not resume AudioContext:', e);
+        return;
+      }
+    }
+    
+    const t = ctx.currentTime;
+
+    // Success sound: Pleasant high-low chime
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+
+    osc1.frequency.setValueAtTime(523.25, t); // C5 - high note
+    gain1.gain.setValueAtTime(0.15, t);
+    gain1.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+    osc1.start(t);
+    osc1.stop(t + 0.3);
+
+    // Second note: lower, pleasant
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+
+    osc2.frequency.setValueAtTime(659.25, t + 0.15); // E5 - higher note for success
+    gain2.gain.setValueAtTime(0, t);
+    gain2.gain.setValueAtTime(0.15, t + 0.15);
+    gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+    osc2.start(t);
+    osc2.stop(t + 0.5);
+  };
+
+  // Play warning sound (already boarded - lower, warning tone)
+  const playWarningSound = async () => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    const ctx = audioContextRef.current;
+    
+    // iOS/iPad requires AudioContext to be resumed after user interaction
+    if (ctx.state === 'suspended') {
+      try {
+        await ctx.resume();
+      } catch (e) {
+        console.warn('Could not resume AudioContext:', e);
+        return;
+      }
+    }
+    
+    const t = ctx.currentTime;
+
+    // Warning sound: Lower, more urgent tone
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+
+    osc1.frequency.setValueAtTime(392.00, t); // G4 - lower note
+    gain1.gain.setValueAtTime(0.2, t);
+    gain1.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+    osc1.start(t);
+    osc1.stop(t + 0.2);
+
+    // Second note: even lower, warning
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+
+    osc2.frequency.setValueAtTime(311.13, t + 0.1); // D#4 - lower warning note
+    gain2.gain.setValueAtTime(0, t);
+    gain2.gain.setValueAtTime(0.2, t + 0.1);
+    gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+    osc2.start(t);
+    osc2.stop(t + 0.4);
+  };
 
   // Statistics for selected flight
   const stats = useMemo(() => {
@@ -126,6 +224,8 @@ export const ScannerApp = () => {
         pnr: found.pnr, 
         success: false 
       });
+      // Play warning sound for already boarded
+      playWarningSound().catch(console.error);
       return;
     }
     
@@ -190,8 +290,8 @@ export const ScannerApp = () => {
         pnr: found.pnr, 
         success: true 
       });
-      // Play success sound (optional)
-      // Success feedback is visual
+      // Play success sound for successful boarding
+      playSuccessSound().catch(console.error);
     } else {
       // Get fresh passenger data to see current status
       const currentPassenger = passengers.find(p => p.pnr === found.pnr);
