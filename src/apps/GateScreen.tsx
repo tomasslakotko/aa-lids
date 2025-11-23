@@ -25,7 +25,20 @@ export const GateScreenApp = () => {
   }, []);
 
   // Direct reactive access - Zustand will automatically re-render when flights change
+  // This will update automatically when real-time updates come in from other devices
   const selectedFlight = flights.find(f => f.id === selectedFlightId);
+  
+  // Log when flight updates (for debugging real-time sync)
+  useEffect(() => {
+    if (selectedFlight) {
+      console.log('Gate Screen: Flight updated', {
+        flightNumber: selectedFlight.flightNumber,
+        status: selectedFlight.status,
+        gateMessage: selectedFlight.gateMessage,
+        gate: selectedFlight.gate
+      });
+    }
+  }, [selectedFlight?.status, selectedFlight?.gateMessage, selectedFlight?.gate, selectedFlight?.etd, selectedFlight?.id]);
 
   // Filter passengers for the standby/upgrade list
   // Realistically, we'd filter by 'Standby' or 'Upgrade Requested'. 
