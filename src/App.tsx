@@ -14,7 +14,8 @@ import {
   Megaphone,
   MonitorPlay,
   Tv,
-  Smartphone
+  Smartphone,
+  ScanLine
 } from 'lucide-react';
 
 // Import Apps
@@ -30,6 +31,7 @@ import { AnnouncementsApp } from './apps/Announcements';
 import { FIDSApp } from './apps/FIDS';
 import { GateScreenApp } from './apps/GateScreen';
 import { SelfCheckInApp } from './apps/SelfCheckIn';
+import { ScannerApp } from './apps/Scanner';
 
 function App() {
   const registerApp = useOSStore((state) => state.registerApp);
@@ -161,6 +163,16 @@ function App() {
       component: SelfCheckInApp,
       defaultWidth: 1200,
       defaultHeight: 900
+    });
+
+    registerApp({
+      id: 'scanner',
+      title: 'QR Scanner',
+      icon: ScanLine,
+      component: ScannerApp,
+      defaultWidth: 800,
+      defaultHeight: 1000,
+      folder: 'GATE'
     });
 
   }, [registerApp]);
