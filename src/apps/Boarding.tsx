@@ -308,35 +308,9 @@ export const BoardingApp = () => {
 
   // Start camera scanner
   const startScanner = async () => {
-    // First, request camera permissions explicitly
-    try {
-      // Check if browser supports getUserMedia
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setScanError('Camera access is not supported in this browser. Please use a modern browser.');
-        return;
-      }
-
-      // Request camera permission explicitly
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { facingMode: 'environment' } 
-        });
-        // Stop the stream immediately - we just wanted permission
-        stream.getTracks().forEach(track => track.stop());
-      } catch (permErr: any) {
-        if (permErr.name === 'NotAllowedError' || permErr.name === 'PermissionDeniedError') {
-          setScanError('Camera access denied. Please allow camera access in your browser settings and try again.');
-          return;
-        } else if (permErr.name === 'NotFoundError' || permErr.name === 'DevicesNotFoundError') {
-          setScanError('No camera found. Please connect a camera and try again.');
-          return;
-        } else {
-          setScanError(`Camera error: ${permErr.message || 'Please allow camera access'}`);
-          return;
-        }
-      }
-    } catch (err: any) {
-      setScanError(`Failed to access camera: ${err.message || 'Please allow camera access'}`);
+    // Check if browser supports getUserMedia
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setScanError('Camera access is not supported in this browser. Please use a modern browser.');
       return;
     }
 
@@ -344,50 +318,66 @@ export const BoardingApp = () => {
     setIsScanning(true);
     setScanError(null);
     
-    // Wait a bit for the DOM to update and element to be available
-    setTimeout(async () => {
-      if (!scannerElementRef.current) {
-        setIsScanning(false);
-        setScanError('Scanner element not found');
-        return;
-      }
-      
-      try {
-        const elementId = scannerElementRef.current.id || 'boarding-qr-reader';
-        const html5QrCode = new Html5Qrcode(elementId);
-        scannerRef.current = html5QrCode;
+    // For iOS/iPad, we need to ensure the element exists, but we must start the scanner
+    // in the same user gesture context. Use a minimal delay with requestAnimationFrame
+    // to allow DOM to update while preserving the gesture chain.
+    requestAnimationFrame(() => {
+      // Use a very short timeout to ensure element is rendered, but keep it minimal
+      // for iOS gesture chain preservation
+      setTimeout(async () => {
+        if (!scannerElementRef.current) {
+          setIsScanning(false);
+          setScanError('Scanner element not found. Please try again.');
+          return;
+        }
         
-        await html5QrCode.start(
-          { facingMode: 'environment' },
-          {
-            fps: 10,
-            qrbox: { width: 250, height: 250 },
-            aspectRatio: 1.0,
-          },
-          (decodedText) => {
-            processScannedCode(decodedText);
-          },
-          (_errorMessage) => {
-            // Ignore scanning errors (they're frequent during scanning)
+        try {
+          const elementId = scannerElementRef.current.id || 'boarding-qr-reader';
+          const html5QrCode = new Html5Qrcode(elementId);
+          scannerRef.current = html5QrCode;
+          
+          // Start the scanner - html5-qrcode will request camera permission
+          // On iOS, this must be called from user gesture (which it is via button click)
+          await html5QrCode.start(
+            { facingMode: 'environment' },
+            {
+              fps: 10,
+              qrbox: { width: 250, height: 250 },
+              aspectRatio: 1.0,
+            },
+            (decodedText) => {
+              processScannedCode(decodedText);
+            },
+            (_errorMessage) => {
+              // Ignore scanning errors (they're frequent during scanning)
+            }
+          );
+        } catch (err: any) {
+          console.error('Scanner error:', err);
+          let errorMsg = 'Failed to start camera';
+          if (err.message) {
+            errorMsg = err.message;
+          } else if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+            errorMsg = 'Camera access denied. Please allow camera access in your browser settings and try again.';
+          } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+            errorMsg = 'No camera found. Please connect a camera.';
+          } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+            errorMsg = 'Camera is already in use by another application. Please close other apps using the camera.';
           }
-        );
-      } catch (err: any) {
-        console.error('Scanner error:', err);
-        let errorMsg = 'Failed to start camera';
-        if (err.message) {
-          errorMsg = err.message;
-        } else if (err.name === 'NotAllowedError') {
-          errorMsg = 'Camera access denied. Please allow camera access and try again.';
-        } else if (err.name === 'NotFoundError') {
-          errorMsg = 'No camera found. Please connect a camera.';
+          setScanError(errorMsg);
+          setIsScanning(false);
+          if (scannerRef.current) {
+            try {
+              scannerRef.current.stop().catch(() => {});
+              scannerRef.current.clear();
+            } catch (e) {
+              // Ignore cleanup errors
+            }
+            scannerRef.current = null;
+          }
         }
-        setScanError(errorMsg);
-        setIsScanning(false);
-        if (scannerRef.current) {
-          scannerRef.current = null;
-        }
-      }
-    }, 100);
+      }, 100); // Minimal delay to allow DOM update
+    });
   };
 
   // Stop camera scanner
@@ -630,11 +620,14 @@ export const BoardingApp = () => {
                />
                <button className="bg-gray-200 border border-gray-400 px-3 py-1 rounded hover:bg-gray-300">Search</button>
                <button
-                 onClick={() => {
+                 onClick={async (e) => {
+                   e.preventDefault();
                    if (isScanning) {
                      stopScanner();
                    } else {
-                     startScanner();
+                     // For iOS/iPad, we need to start the scanner directly from the click handler
+                     // to preserve the user gesture chain for camera permission
+                     await startScanner();
                    }
                  }}
                  className={clsx(
