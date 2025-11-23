@@ -211,11 +211,7 @@ export const ScannerApp = () => {
 
   // Start camera scanner
   const startScanner = async () => {
-    if (!selectedFlightId) {
-      setScanError('Please select a flight first');
-      return;
-    }
-
+    // Allow starting scanner even without flight - user can scan flight QR first
     // Set scanning state FIRST - makes element visible
     setIsScanning(true);
     setScanError(null);
