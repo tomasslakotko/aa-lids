@@ -368,10 +368,10 @@ export const ReservationsApp = () => {
          addLog('UNABLE TO PRICE: MISSING NAMES OR SEGMENTS');
        } else {
          // Generate random pricing
-         // Base fare: 15-150 EUR (depending on route length)
+         // Base fare: 120-800 EUR for short routes, 600-2300 EUR for long routes
          const routeLength = wipPnr.segments[0].destination === 'JFK' || wipPnr.segments[0].destination === 'LAX' || wipPnr.segments[0].destination === 'BKK' || wipPnr.segments[0].destination === 'DOH' ? 'long' : 'short';
-         const baseFareMin = routeLength === 'long' ? 80 : 15;
-         const baseFareMax = routeLength === 'long' ? 150 : 60;
+         const baseFareMin = routeLength === 'long' ? 600 : 120;
+         const baseFareMax = routeLength === 'long' ? 2300 : 800;
          const baseFare = Math.round((Math.random() * (baseFareMax - baseFareMin) + baseFareMin) * 100) / 100;
          
          // Tax: 8-25 EUR (random)
@@ -415,8 +415,8 @@ export const ReservationsApp = () => {
        } else {
          // Generate random pricing (same logic as FXP)
          const routeLength = wipPnr.segments[0].destination === 'JFK' || wipPnr.segments[0].destination === 'LAX' || wipPnr.segments[0].destination === 'BKK' || wipPnr.segments[0].destination === 'DOH' ? 'long' : 'short';
-         const baseFareMin = routeLength === 'long' ? 80 : 15;
-         const baseFareMax = routeLength === 'long' ? 150 : 60;
+         const baseFareMin = routeLength === 'long' ? 600 : 120;
+         const baseFareMax = routeLength === 'long' ? 2300 : 800;
          const baseFare = Math.round((Math.random() * (baseFareMax - baseFareMin) + baseFareMin) * 100) / 100;
          
          const tax = Math.round((Math.random() * 17 + 8) * 100) / 100;
