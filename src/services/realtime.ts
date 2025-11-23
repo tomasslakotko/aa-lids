@@ -80,6 +80,8 @@ export function setupRealtimeSubscriptions(
   }
 
   console.log('Setting up real-time subscriptions...');
+  console.log('Supabase URL:', SUPABASE_URL ? 'Set' : 'Missing');
+  console.log('Supabase Key:', SUPABASE_ANON_KEY ? 'Set' : 'Missing');
 
   // Subscribe to flights table changes
   const flightsChannel = supabaseClient
@@ -92,11 +94,17 @@ export function setupRealtimeSubscriptions(
         table: 'flights'
       },
       (payload) => {
+        console.log('Real-time flight UPDATE event received:', {
+          isLocalUpdate,
+          payload: payload.new,
+          old: payload.old
+        });
         if (isLocalUpdate) {
           // This update came from our own device, skip it
+          console.log('Skipping real-time update - it came from this device');
           return;
         }
-        console.log('Real-time flight update received:', payload.new);
+        console.log('Processing real-time flight update from another device');
         const flight = dbRowToFlight(payload.new);
         onFlightUpdate(flight);
       }
@@ -132,7 +140,23 @@ export function setupRealtimeSubscriptions(
         onFlightDelete(payload.old.id);
       }
     )
-    .subscribe();
+    .subscribe((status, err) => {
+      if (err) {
+        console.error('❌ Error subscribing to flights table:', err);
+        console.error('Make sure real-time is enabled in Supabase Dashboard → Database → Replication');
+        return;
+      }
+      console.log('Flights channel subscription status:', status);
+      if (status === 'SUBSCRIBED') {
+        console.log('✅ Successfully subscribed to flights table changes');
+      } else if (status === 'CHANNEL_ERROR') {
+        console.error('❌ Error subscribing to flights table - check if real-time is enabled in Supabase');
+      } else if (status === 'TIMED_OUT') {
+        console.error('❌ Subscription timed out - check network connection');
+      } else if (status === 'CLOSED') {
+        console.warn('⚠️ Subscription closed');
+      }
+    });
 
   // Subscribe to passengers table changes
   const passengersChannel = supabaseClient
@@ -184,7 +208,23 @@ export function setupRealtimeSubscriptions(
         onPassengerDelete(payload.old.id);
       }
     )
-    .subscribe();
+    .subscribe((status, err) => {
+      if (err) {
+        console.error('❌ Error subscribing to passengers table:', err);
+        console.error('Make sure real-time is enabled in Supabase Dashboard → Database → Replication');
+        return;
+      }
+      console.log('Passengers channel subscription status:', status);
+      if (status === 'SUBSCRIBED') {
+        console.log('✅ Successfully subscribed to passengers table changes');
+      } else if (status === 'CHANNEL_ERROR') {
+        console.error('❌ Error subscribing to passengers table - check if real-time is enabled in Supabase');
+      } else if (status === 'TIMED_OUT') {
+        console.error('❌ Subscription timed out - check network connection');
+      } else if (status === 'CLOSED') {
+        console.warn('⚠️ Subscription closed');
+      }
+    });
 
   // Return cleanup function
   return () => {
