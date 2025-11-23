@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAirportStore } from '../store/airportStore';
-import { Check, Plane, Luggage, Printer, FileText, DollarSign, Plus, Minus, AlertCircle, History, MessageSquare, Star, X } from 'lucide-react';
+import { Check, Plane, Luggage, Printer, FileText, DollarSign, Plus, Minus, AlertCircle, History, MessageSquare, Star, X, Loader } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import clsx from 'clsx';
 
@@ -409,11 +409,16 @@ export const CheckInApp = () => {
   const [showLogsModal, setShowLogsModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showServicesModal, setShowServicesModal] = useState(false);
+  const [showCardProcessing, setShowCardProcessing] = useState(false);
   
   // Payment state
   const [ticketPrice, setTicketPrice] = useState<number>(0);
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<string>('CASH');
+  const [cardNumber, setCardNumber] = useState<string>('');
+  const [cardExpiry, setCardExpiry] = useState<string>('');
+  const [cardCvv, setCardCvv] = useState<string>('');
+  const [paymentItems, setPaymentItems] = useState<Array<{description: string; quantity: number; unitPrice: number; total: number}>>([]);
   
   // Services state
   const [extraBags, setExtraBags] = useState<number>(0);
@@ -424,11 +429,13 @@ export const CheckInApp = () => {
   const passengers = useAirportStore((state) => state.passengers);
   const flights = useAirportStore((state) => state.flights);
   const logs = useAirportStore((state) => state.logs);
+  const emails = useAirportStore((state) => state.emails);
   const checkInPassenger = useAirportStore((state) => state.checkInPassenger);
   const cancelCheckIn = useAirportStore((state) => state.cancelCheckIn);
   const updatePassengerDetails = useAirportStore((state) => state.updatePassengerDetails);
   const addLog = useAirportStore((state) => state.addLog);
   const upgradePassenger = useAirportStore((state) => state.upgradePassenger);
+  const sendEmailConfirmation = useAirportStore((state) => state.sendEmailConfirmation);
 
   // Derived Data
   const foundPassenger = selectedPnr ? passengers.find(p => p.pnr === selectedPnr) : null;
@@ -593,12 +600,69 @@ export const CheckInApp = () => {
     }
   };
   
-  const handleProcessPayment = () => {
+  const handleProcessPayment = async () => {
     if (foundPassenger && paymentAmount > 0) {
+      // If card payment, show processing emulator
+      if (paymentMethod === 'CARD') {
+        if (!cardNumber || !cardExpiry || !cardCvv) {
+          alert('Please enter card details');
+          return;
+        }
+        setShowCardProcessing(true);
+        // Simulate card processing
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        setShowCardProcessing(false);
+      }
+      
+      // Generate receipt
+      const receiptNumber = `RCP-${Date.now()}`;
+      const transactionId = paymentMethod === 'CARD' ? `TXN-${Math.random().toString(36).substr(2, 9).toUpperCase()}` : undefined;
+      const receiptDate = new Date().toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      
+      // Find passenger email from previous emails
+      const passengerEmail = emails.find((e: any) => e.pnr === foundPassenger.pnr)?.to || '';
+      
+      // Generate receipt HTML
+      const { generateReceiptHtml } = await import('../services/mailgun-receipt');
+      const receiptHtml = generateReceiptHtml({
+        passengerName: `${foundPassenger.lastName} ${foundPassenger.firstName}`,
+        pnr: foundPassenger.pnr,
+        receiptNumber,
+        date: receiptDate,
+        items: paymentItems.length > 0 ? paymentItems : [{
+          description: ticketPrice > 0 ? 'Ticket' : 'Service Payment',
+          quantity: 1,
+          unitPrice: paymentAmount,
+          total: paymentAmount
+        }],
+        subtotal: paymentAmount,
+        tax: 0,
+        total: paymentAmount,
+        currency: 'EUR',
+        paymentMethod,
+        transactionId
+      });
+      
+      // Send receipt email
+      if (passengerEmail) {
+        await sendEmailConfirmation(
+          foundPassenger.pnr,
+          passengerEmail,
+          `Payment Receipt - ${receiptNumber}`,
+          `Payment receipt for ${foundPassenger.lastName} ${foundPassenger.firstName}`,
+          receiptHtml
+        );
+      }
+      
       addLog(`Payment processed: ${paymentMethod} - ${paymentAmount.toFixed(2)} EUR for ${foundPassenger.lastName} ${foundPassenger.firstName} (${foundPassenger.pnr})`, 'CHECK_IN');
       setShowPaymentModal(false);
       setPaymentAmount(0);
-      alert(`PAYMENT PROCESSED: ${paymentAmount.toFixed(2)} EUR via ${paymentMethod}`);
+      setTicketPrice(0);
+      setPaymentItems([]);
+      setCardNumber('');
+      setCardExpiry('');
+      setCardCvv('');
+      alert(`PAYMENT PROCESSED: ${paymentAmount.toFixed(2)} EUR via ${paymentMethod}${passengerEmail ? ' - Receipt sent to email' : ''}`);
     }
   };
   
@@ -608,6 +672,7 @@ export const CheckInApp = () => {
       if (extraBags > 0) {
         updates.bagCount = foundPassenger.bagCount + extraBags;
         updates.hasBags = true;
+        (updates as any).paidBags = ((foundPassenger as any).paidBags || 0) + extraBags; // Track paid bags
         addLog(`Added ${extraBags} extra bag(s) for ${foundPassenger.lastName} ${foundPassenger.firstName} (${foundPassenger.pnr})`, 'CHECK_IN');
       }
       if (loungeAccess) {
@@ -618,6 +683,7 @@ export const CheckInApp = () => {
         // Convert upgrade class to J or Y format
         const classCode = upgradeClass === 'BUSINESS' || upgradeClass === 'FIRST' ? 'J' : 'Y';
         upgradePassenger(foundPassenger.pnr, classCode);
+        updates.upgraded = true; // Track upgrade
         addLog(`Upgraded ${foundPassenger.lastName} ${foundPassenger.firstName} (${foundPassenger.pnr}) to ${upgradeClass}`, 'CHECK_IN');
       }
       if (Object.keys(updates).length > 0) {
@@ -815,6 +881,9 @@ export const CheckInApp = () => {
                                   {seg.passenger.passengerType === 'STAFF_SBY' && (
                                     <span className="bg-orange-500 text-orange-900 px-1.5 py-0.5 rounded text-[9px] font-bold border border-orange-600">SBY</span>
                                   )}
+                                  {(seg.passenger as any).upgraded && (
+                                    <span className="bg-purple-500 text-purple-900 px-1.5 py-0.5 rounded text-[9px] font-bold border border-purple-600">UPG</span>
+                                  )}
                                 </div>
                               ) : ''}
                            </td>
@@ -1003,8 +1072,19 @@ export const CheckInApp = () => {
                 </div>
                 
                 <div className="flex gap-2">
-                    <LegacyButton primary onClick={() => updatePassengerDetails(foundPassenger.pnr, { bagCount: foundPassenger.bagCount + 1 })}>
-                       + Add Bag (23KG)
+                    <LegacyButton primary onClick={() => {
+                      const paidBags = (foundPassenger as any).paidBags || 0;
+                      const currentBags = foundPassenger.bagCount;
+                      const newBagCount = currentBags + 1;
+                      updatePassengerDetails(foundPassenger.pnr, { 
+                        bagCount: newBagCount,
+                        hasBags: newBagCount > 0
+                      });
+                      if (paidBags > 0 && newBagCount <= paidBags) {
+                        alert(`Adding paid bag ${newBagCount} of ${paidBags}`);
+                      }
+                    }}>
+                       + Add Bag (23KG){(foundPassenger as any).paidBags ? ` [${foundPassenger.bagCount + 1}/${(foundPassenger as any).paidBags} paid]` : ''}
                     </LegacyButton>
                     <LegacyButton onClick={() => updatePassengerDetails(foundPassenger.pnr, { bagCount: Math.max(0, foundPassenger.bagCount - 1) })} disabled={foundPassenger.bagCount === 0}>
                        - Remove Bag
@@ -1360,7 +1440,14 @@ export const CheckInApp = () => {
                 <label className="block text-sm font-bold mb-1">Payment Method:</label>
                 <select
                   value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  onChange={(e) => {
+                    setPaymentMethod(e.target.value);
+                    if (e.target.value !== 'CARD') {
+                      setCardNumber('');
+                      setCardExpiry('');
+                      setCardCvv('');
+                    }
+                  }}
                   className="w-full border border-gray-300 rounded p-2 text-sm"
                 >
                   <option value="CASH">Cash</option>
@@ -1369,6 +1456,45 @@ export const CheckInApp = () => {
                   <option value="REFUND">Refund</option>
                 </select>
               </div>
+              {paymentMethod === 'CARD' && (
+                <div className="space-y-3 border border-gray-300 rounded p-3 bg-gray-50">
+                  <div>
+                    <label className="block text-sm font-bold mb-1">Card Number:</label>
+                    <input
+                      type="text"
+                      value={cardNumber}
+                      onChange={(e) => setCardNumber(e.target.value.replace(/\s/g, '').replace(/(.{4})/g, '$1 ').trim())}
+                      className="w-full border border-gray-300 rounded p-2 text-sm"
+                      placeholder="1234 5678 9012 3456"
+                      maxLength={19}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-bold mb-1">Expiry:</label>
+                      <input
+                        type="text"
+                        value={cardExpiry}
+                        onChange={(e) => setCardExpiry(e.target.value.replace(/\D/g, '').replace(/(\d{2})(\d)/, '$1/$2').substring(0, 5))}
+                        className="w-full border border-gray-300 rounded p-2 text-sm"
+                        placeholder="MM/YY"
+                        maxLength={5}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold mb-1">CVV:</label>
+                      <input
+                        type="text"
+                        value={cardCvv}
+                        onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, '').substring(0, 3))}
+                        className="w-full border border-gray-300 rounded p-2 text-sm"
+                        placeholder="123"
+                        maxLength={3}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
               {paymentAmount > 0 && ticketPrice > 0 && (
                 <div className="bg-blue-50 border border-blue-200 rounded p-3">
                   <div className="flex justify-between text-sm mb-1">
@@ -1468,6 +1594,22 @@ export const CheckInApp = () => {
               <LegacyButton primary onClick={handleSaveServices}>
                 Apply Services
               </LegacyButton>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Card Processing Emulator */}
+      {showCardProcessing && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full mx-4 p-8 text-center">
+            <Loader className="w-16 h-16 mx-auto mb-4 text-blue-600 animate-spin" />
+            <h3 className="text-xl font-bold mb-2">Processing Payment</h3>
+            <p className="text-gray-600 mb-4">Please wait while we process your card payment...</p>
+            <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+              <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></div>
+              <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+              <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
             </div>
           </div>
         </div>
