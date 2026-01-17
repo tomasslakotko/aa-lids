@@ -19,6 +19,7 @@ type Screen =
   | 'explore'
   | 'book'
   | 'trips'
+  | 'tripDetail'
   | 'account'
   | 'more'
   | 'add'
@@ -264,13 +265,14 @@ export const MobilePassengerApp = () => {
       );
     }
 
-    if (['add', 'seat', 'checkin', 'payment', 'notifications'].includes(screen)) {
+    if (['add', 'seat', 'checkin', 'payment', 'notifications', 'tripDetail'].includes(screen)) {
       const titleMap: Record<string, string> = {
         add: 'Find My Trip',
         seat: 'Seat Selection',
         checkin: 'Check In',
         payment: 'Payment',
-        notifications: 'Notifications'
+        notifications: 'Notifications',
+        tripDetail: selectedFlight ? `${selectedFlight.origin} - ${selectedFlight.destination}` : 'Trip'
       };
       return (
         <div className="bg-gradient-to-b from-slate-900 to-slate-800 text-white px-4 pt-5 pb-4">
@@ -349,7 +351,10 @@ export const MobilePassengerApp = () => {
         <div className="p-4 space-y-4">
           <div className="text-lg font-semibold text-slate-800">My Flights ({tripPassengers.length})</div>
           {selectedPassenger ? (
-            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+            <button
+              className="bg-white rounded-2xl shadow-sm overflow-hidden text-left"
+              onClick={() => setScreen('tripDetail')}
+            >
               <div className="h-40 bg-gradient-to-r from-slate-800 via-slate-700 to-slate-500 relative">
                 <div className="absolute left-4 bottom-4">
                   <span className="bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-semibold">
@@ -372,7 +377,7 @@ export const MobilePassengerApp = () => {
                   {selectedFlight ? formatDate(selectedFlight.date) : ''}
                 </div>
               </div>
-            </div>
+            </button>
           ) : (
             <div className="bg-white rounded-2xl shadow-sm p-6 text-slate-600">
               No Trip. Add a reservation to view.
@@ -417,6 +422,78 @@ export const MobilePassengerApp = () => {
               <span className="font-semibold text-slate-700">Find My Trip</span>
               <ChevronRight className="w-5 h-5 text-slate-400" />
             </button>
+          </div>
+        </div>
+      )}
+
+      {screen === 'tripDetail' && selectedPassenger && (
+        <div className="p-4 space-y-6">
+          <div className="rounded-2xl overflow-hidden bg-gradient-to-br from-slate-900 to-slate-800 text-white p-6">
+            <div className="text-xs text-slate-300">
+              Confirmation # {selectedPassenger.pnr}
+            </div>
+            <div className="text-3xl font-semibold mt-2">
+              To {selectedFlight ? selectedFlight.destinationCity || selectedFlight.destination : 'Destination'}
+            </div>
+            <div className="text-sm text-slate-300 mt-2">
+              {selectedFlight ? formatDate(selectedFlight.date) : 'Date TBA'}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {[
+              { label: 'Seat Selection', action: () => setScreen('seat') },
+              { label: 'Change or Add Flights', action: () => setScreen('book') },
+              { label: 'Need to Cancel?', action: () => setScreen('more') }
+            ].map((item) => (
+              <button
+                key={item.label}
+                className="w-full bg-white rounded-xl shadow-sm p-4 flex items-center justify-between"
+                onClick={item.action}
+              >
+                <span className="text-slate-700">{item.label}</span>
+                <ChevronRight className="w-5 h-5 text-slate-400" />
+              </button>
+            ))}
+          </div>
+
+          <div>
+            <div className="text-lg font-semibold text-slate-800 mb-2">Completed Flights</div>
+            <div className="bg-white rounded-2xl shadow-sm p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-semibold">
+                    To {selectedFlight ? selectedFlight.destinationCity || selectedFlight.destination : 'Destination'}
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    {selectedFlight ? formatDate(selectedFlight.date) : 'Date TBA'}
+                  </div>
+                </div>
+                <ChevronRight className="w-5 h-5 text-slate-400 rotate-90" />
+              </div>
+              <div className="border-t pt-4 grid grid-cols-3 gap-2 text-center text-sm text-slate-600">
+                <div>
+                  <div className="text-xs text-slate-400">Seat</div>
+                  <div className="font-semibold">{selectedPassenger.seat || '--'}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-400">Status</div>
+                  <div className="font-semibold">
+                    {selectedPassenger.status === 'CHECKED_IN' ? 'CHECKED IN' : selectedPassenger.status}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-400">Flight</div>
+                  <div className="font-semibold">{selectedFlight?.flightNumber || '--'}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-semibold">
+                  {selectedPassenger.seat === 'SBY' ? 'STANDBY' : 'CONFIRMED'}
+                </span>
+                <span className="text-sm text-slate-600">Check Gate Screens</span>
+              </div>
+            </div>
           </div>
         </div>
       )}
