@@ -1,25 +1,30 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Bell,
+  BookOpen,
+  ChevronRight,
+  ClipboardCheck,
   CreditCard,
+  Home,
   Luggage,
   MapPin,
+  Menu,
   Plane,
-  Share2,
-  Ticket,
+  UserCircle,
   Wifi,
-  Armchair,
-  ClipboardCheck
+  Armchair
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useAirportStore } from '../store/airportStore';
 import { initializeAirportDatabase } from '../store/airportStore';
 
 type Screen =
-  | 'home'
-  | 'reservations'
-  | 'add'
+  | 'explore'
   | 'book'
+  | 'trips'
+  | 'account'
+  | 'more'
+  | 'add'
   | 'seat'
   | 'checkin'
   | 'payment'
@@ -51,7 +56,7 @@ export const MobilePassengerApp = () => {
   const createBooking = useAirportStore((state) => state.createBooking);
   const addLog = useAirportStore((state) => state.addLog);
 
-  const [screen, setScreen] = useState<Screen>('home');
+  const [screen, setScreen] = useState<Screen>('explore');
   const [trips, setTrips] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem(TRIPS_KEY);
@@ -151,7 +156,7 @@ export const MobilePassengerApp = () => {
     setLookupPnr('');
     setLookupLastName('');
     setSuccess('Reservation added.');
-    setScreen('home');
+    setScreen('trips');
   };
 
   const handleBookTrip = () => {
@@ -169,7 +174,7 @@ export const MobilePassengerApp = () => {
     setBookingLastName('');
     setBookingFlightId('');
     setSuccess(`Booking created: ${newPnr}`);
-    setScreen('home');
+    setScreen('trips');
   };
 
   const handleSeatSave = () => {
@@ -177,7 +182,7 @@ export const MobilePassengerApp = () => {
     updatePassengerDetails(selectedPassenger.pnr, { seat: seatSelection });
     addLog(`Mobile seat selection ${seatSelection} for ${selectedPassenger.pnr}`, 'SELF_CHECK_IN');
     setSuccess('Seat updated.');
-    setScreen('home');
+    setScreen('trips');
   };
 
   const handleCheckIn = async () => {
@@ -193,7 +198,7 @@ export const MobilePassengerApp = () => {
     const ok = await checkInPassenger(selectedPassenger.pnr);
     if (ok) {
       setSuccess('Check-in completed.');
-      setScreen('home');
+      setScreen('trips');
     } else {
       setError('Check-in failed. Please contact the airline.');
     }
@@ -207,7 +212,7 @@ export const MobilePassengerApp = () => {
     );
     setPaymentAmount(0);
     setSuccess('Payment successful.');
-    setScreen('home');
+    setScreen('trips');
   };
 
   const seatMap = useMemo(() => {
@@ -217,56 +222,165 @@ export const MobilePassengerApp = () => {
     ).flat();
   }, [selectedFlight]);
 
-  return (
-    <div className="min-h-screen bg-slate-100 text-slate-900">
-      <div className="bg-slate-900 text-white px-4 py-4 sticky top-0 z-10 shadow-md">
-        <div className="flex items-center justify-between">
-          <button
-            className="text-sm text-slate-300"
-            onClick={() => setScreen('home')}
-          >
-            {screen === 'home' ? 'Mobile App' : 'Back'}
-          </button>
-          <div className="text-center">
-            <div className="text-xs text-slate-300">Select a Flight</div>
-            <div className="font-semibold">
-              {selectedFlight ? `${selectedFlight.origin} - ${selectedFlight.destination}` : 'No Trip'}
-            </div>
+  const formatDate = (date?: string) => {
+    if (!date) {
+      return new Date().toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      });
+    }
+    const [y, m, d] = date.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
+  const navItems = [
+    { id: 'explore', label: 'Explore', icon: Home },
+    { id: 'book', label: 'Book', icon: BookOpen },
+    { id: 'trips', label: 'Trips', icon: Plane },
+    { id: 'account', label: 'Account', icon: UserCircle },
+    { id: 'more', label: 'More', icon: Menu }
+  ] as const;
+
+  const renderHeader = () => {
+    if (screen === 'account') {
+      return (
+        <div className="bg-gradient-to-b from-slate-900 to-slate-800 text-white px-4 pt-5 pb-4">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-slate-300">SKYMILES</div>
+            <button onClick={() => setScreen('notifications')}>
+              <Bell className="w-5 h-5" />
+            </button>
           </div>
-          <button className="text-sm text-slate-300" onClick={() => setScreen('notifications')}>
-            <Bell className="w-4 h-4" />
+          <div className="mt-3 flex gap-6 text-xs text-slate-400">
+            <span className="text-white border-b-2 border-white pb-1">SKYMILES</span>
+            <span>MY WALLET</span>
+            <span>PROFILE</span>
+          </div>
+        </div>
+      );
+    }
+
+    if (screen === 'more') {
+      return (
+        <div className="bg-gradient-to-b from-slate-900 to-slate-800 text-white px-4 pt-5 pb-4">
+          <div className="flex items-center justify-between">
+            <div />
+            <div className="text-sm text-slate-300">LOG OUT</div>
+          </div>
+        </div>
+      );
+    }
+
+    if (['add', 'seat', 'checkin', 'payment', 'notifications'].includes(screen)) {
+      const titleMap: Record<string, string> = {
+        add: 'Find My Trip',
+        seat: 'Seat Selection',
+        checkin: 'Check In',
+        payment: 'Payment',
+        notifications: 'Notifications'
+      };
+      return (
+        <div className="bg-gradient-to-b from-slate-900 to-slate-800 text-white px-4 pt-5 pb-4">
+          <div className="flex items-center justify-between">
+            <button className="text-sm text-slate-300" onClick={() => setScreen('trips')}>
+              Back
+            </button>
+            <div className="font-semibold">{titleMap[screen]}</div>
+            <div className="w-10" />
+          </div>
+        </div>
+      );
+    }
+
+    const title =
+      screen === 'explore'
+        ? `Welcome, ${selectedPassenger?.firstName || 'Traveler'}`
+        : screen === 'book'
+        ? 'Book'
+        : screen === 'trips'
+        ? 'My Trips'
+        : 'Mobile App';
+
+    return (
+      <div className="bg-gradient-to-b from-slate-900 to-slate-800 text-white px-4 pt-5 pb-4">
+        <div className="flex items-center justify-between">
+          <div className="font-semibold">{title}</div>
+          <button onClick={() => setScreen('notifications')}>
+            <Bell className="w-5 h-5" />
           </button>
         </div>
+        {screen === 'explore' && (
+          <div className="mt-2 text-xs text-slate-300">0 Miles</div>
+        )}
       </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-100 text-slate-900 pb-24">
+      {renderHeader()}
 
       {error && <div className="mx-4 mt-4 p-3 bg-red-100 text-red-700 rounded-lg">{error}</div>}
       {success && <div className="mx-4 mt-4 p-3 bg-green-100 text-green-700 rounded-lg">{success}</div>}
 
-      {screen === 'home' && (
-        <div className="p-4 space-y-4">
-          <div className="bg-white rounded-xl shadow-sm p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-xs text-slate-500">Passenger</div>
-                <div className="font-semibold">
-                  {selectedPassenger ? `${selectedPassenger.firstName} ${selectedPassenger.lastName}` : 'Add reservation'}
-                </div>
+      {screen === 'explore' && (
+        <div className="p-4 space-y-6">
+          <div className="rounded-2xl overflow-hidden bg-gradient-to-br from-blue-900 to-blue-600 text-white shadow-lg">
+            <div className="p-5">
+              <div className="text-sm text-slate-200">Finish Booking Your Trip</div>
+              <div className="text-4xl font-semibold mt-2">
+                {selectedFlight ? `${selectedFlight.origin} → ${selectedFlight.destination}` : 'Plan Your Journey'}
               </div>
               <button
-                className="text-sm text-blue-600"
-                onClick={() => setScreen('reservations')}
+                className="mt-6 w-full bg-white/90 text-blue-900 font-semibold py-3 rounded-lg"
+                onClick={() => setScreen('book')}
               >
-                Manage
+                View Flights
               </button>
             </div>
-            {selectedFlight && (
-              <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600">
-                <div>Flight: {selectedFlight.flightNumber}</div>
-                <div>Gate: {selectedFlight.gate || 'TBA'}</div>
-                <div>Departure: {selectedFlight.std}</div>
-                <div>Boarding: {getBoardingTime(selectedFlight.std)}</div>
+          </div>
+
+          <div>
+            <div className="text-xl font-semibold text-slate-800 mb-3">Elevate Your Travel Experience</div>
+            <div className="bg-white rounded-2xl shadow-sm p-4">
+              <div className="text-sm text-slate-600">
+                From road to runway. Earn miles with linked accounts and partner offers.
               </div>
-            )}
+              <button className="mt-4 text-blue-700 font-semibold">Learn More</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {screen === 'trips' && (
+        <div className="p-4 space-y-4">
+          <div className="text-lg font-semibold text-slate-800">My Flights ({tripPassengers.length})</div>
+          <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+            <div className="h-32 bg-gradient-to-r from-slate-700 to-slate-500" />
+            <div className="p-4 space-y-2">
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <span className="bg-orange-500 text-white px-2 py-1 rounded-full">
+                  {selectedPassenger?.seat === 'SBY' ? 'STANDBY' : 'CONFIRMED'}
+                </span>
+                <span>Confirmation # {selectedPassenger?.pnr || '—'}</span>
+              </div>
+              <div className="text-2xl font-semibold">
+                {selectedFlight ? `${selectedFlight.destination}` : 'No Trip'}
+              </div>
+              <div className="text-sm text-slate-600">
+                {selectedFlight ? `${selectedFlight.origin} - ${selectedFlight.destination}` : 'Add a reservation to view'}
+              </div>
+              <div className="text-sm text-slate-500">
+                {selectedFlight ? formatDate(selectedFlight.date) : ''}
+              </div>
+            </div>
           </div>
 
           <div className="grid gap-3">
@@ -277,13 +391,8 @@ export const MobilePassengerApp = () => {
             >
               <Armchair className="w-5 h-5 text-slate-700" />
               <span className="flex-1 text-left">Seat Selection</span>
-              {selectedPassenger?.seat && (
-                <span className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-full">
-                  {selectedPassenger.seat === 'SBY' ? 'STANDBY' : selectedPassenger.seat}
-                </span>
-              )}
+              <span className="text-xs text-slate-500">{selectedPassenger?.seat || '--'}</span>
             </button>
-
             <button
               className="bg-white rounded-xl shadow-sm p-4 flex items-center gap-3"
               onClick={() => setScreen('checkin')}
@@ -291,91 +400,180 @@ export const MobilePassengerApp = () => {
             >
               <ClipboardCheck className="w-5 h-5 text-slate-700" />
               <span className="flex-1 text-left">Check In</span>
+              <span className="text-xs text-slate-500">{selectedPassenger?.status || ''}</span>
             </button>
-
             <button
               className="bg-white rounded-xl shadow-sm p-4 flex items-center gap-3"
               onClick={() => setScreen('payment')}
               disabled={!selectedPassenger}
             >
               <CreditCard className="w-5 h-5 text-slate-700" />
-              <span className="flex-1 text-left">Payments</span>
+              <span className="flex-1 text-left">Payment</span>
             </button>
+          </div>
 
-            <div className="bg-white rounded-xl shadow-sm p-4 flex items-center gap-3">
-              <Luggage className="w-5 h-5 text-slate-700" />
-              <span className="flex-1 text-left">Track Bags</span>
-            </div>
-            <div className="bg-white rounded-xl shadow-sm p-4 flex items-center gap-3">
-              <Plane className="w-5 h-5 text-slate-700" />
-              <span className="flex-1 text-left">Where is My Plane?</span>
-            </div>
-            <div className="bg-white rounded-xl shadow-sm p-4 flex items-center gap-3">
-              <Ticket className="w-5 h-5 text-slate-700" />
-              <span className="flex-1 text-left">Upgrade / Standby List</span>
-            </div>
-            <div className="bg-white rounded-xl shadow-sm p-4 flex items-center gap-3">
-              <MapPin className="w-5 h-5 text-slate-700" />
-              <span className="flex-1 text-left">Connecting Gate</span>
-            </div>
-            <div className="bg-white rounded-xl shadow-sm p-4 flex items-center gap-3">
-              <Wifi className="w-5 h-5 text-slate-700" />
-              <span className="flex-1 text-left">In-Flight Wi-Fi</span>
-            </div>
-            <div className="bg-white rounded-xl shadow-sm p-4 flex items-center gap-3">
-              <Share2 className="w-5 h-5 text-slate-700" />
-              <span className="flex-1 text-left">Share Trip Information</span>
-            </div>
+          <div>
+            <div className="text-lg font-semibold text-slate-800 mb-2">Don't See A Trip?</div>
+            <button
+              className="w-full bg-white rounded-xl shadow-sm p-4 flex items-center justify-between"
+              onClick={() => setScreen('add')}
+            >
+              <span className="font-semibold text-slate-700">Find My Trip</span>
+              <ChevronRight className="w-5 h-5 text-slate-400" />
+            </button>
           </div>
         </div>
       )}
 
-      {screen === 'reservations' && (
+      {screen === 'book' && (
         <div className="p-4 space-y-4">
-          <div className="bg-white rounded-xl shadow-sm p-4">
-            <h2 className="font-semibold mb-2">My Reservations</h2>
-            <div className="space-y-2">
-              {tripPassengers.length === 0 && (
-                <div className="text-sm text-slate-500">No reservations saved.</div>
-              )}
-              {tripPassengers.map((p) => {
-                const flight = flights.find((f) => f.id === p!.flightId);
-                return (
-                  <button
-                    key={p!.pnr}
-                    className={clsx(
-                      'w-full text-left border rounded-lg p-3',
-                      selectedPnr === p!.pnr ? 'border-blue-500 bg-blue-50' : 'border-slate-200'
-                    )}
-                    onClick={() => {
-                      setSelectedPnr(p!.pnr);
-                      setScreen('home');
-                    }}
-                  >
-                    <div className="font-semibold">{p!.firstName} {p!.lastName}</div>
-                    <div className="text-xs text-slate-500">
-                      {p!.pnr} · {flight?.origin}-{flight?.destination} · {flight?.flightNumber}
-                    </div>
-                  </button>
-                );
-              })}
+          <div className="bg-white rounded-2xl shadow-sm p-4 space-y-4">
+            <div className="flex gap-2 bg-slate-100 rounded-full p-1 text-xs font-semibold">
+              {['Round Trip', 'One-Way', 'Multi-City'].map((label) => (
+                <button
+                  key={label}
+                  className={clsx(
+                    'flex-1 py-2 rounded-full',
+                    label === 'One-Way' ? 'bg-white shadow text-slate-900' : 'text-slate-500'
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-4 text-center">
+              <div className="border rounded-xl p-3">
+                <div className="text-3xl font-semibold">
+                  {selectedFlight?.origin || 'DTW'}
+                </div>
+                <div className="text-xs text-slate-500">Departure</div>
+              </div>
+              <div className="border rounded-xl p-3">
+                <div className="text-3xl font-semibold">
+                  {selectedFlight?.destination || 'MKE'}
+                </div>
+                <div className="text-xs text-slate-500">Arrival</div>
+              </div>
+            </div>
+            <div className="border rounded-xl p-3 flex items-center justify-between">
+              <span className="text-sm text-slate-600">Date</span>
+              <input type="date" className="text-sm" />
+            </div>
+            <div className="border rounded-xl p-3 flex items-center justify-between">
+              <span className="text-sm text-slate-600">Passengers</span>
+              <span className="text-sm">1</span>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <button className="bg-white rounded-xl shadow-sm p-4" onClick={() => setScreen('add')}>
-              Add Reservation
-            </button>
-            <button className="bg-white rounded-xl shadow-sm p-4" onClick={() => setScreen('book')}>
-              Book Flight
+
+          <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
+            <div className="flex items-center justify-between text-sm text-slate-600">
+              <span>Shop With Miles</span>
+              <div className="h-5 w-10 bg-slate-200 rounded-full" />
+            </div>
+            <div className="flex items-center justify-between text-sm text-slate-600">
+              <span>My Dates Are Flexible</span>
+              <div className="h-5 w-10 bg-slate-200 rounded-full" />
+            </div>
+            <div className="flex items-center justify-between text-sm text-slate-600">
+              <span>Refundable Fares Only</span>
+              <div className="h-5 w-10 bg-slate-200 rounded-full" />
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
+            <div className="text-sm font-semibold">Advanced Search</div>
+            <select
+              className="w-full border rounded-lg px-3 py-2 text-sm"
+              value={bookingFlightId}
+              onChange={(e) => setBookingFlightId(e.target.value)}
+            >
+              <option value="">Best Fares For</option>
+              {flights.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.flightNumber} · {f.origin}-{f.destination} · {f.std}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <button
+            className="w-full bg-red-600 text-white font-semibold py-3 rounded-xl"
+            onClick={() => setScreen('book')}
+          >
+            Find Flights
+          </button>
+
+          <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
+            <div className="text-sm font-semibold">Passenger Details</div>
+            <input
+              className="w-full border rounded-lg px-3 py-2 text-sm"
+              placeholder="First name"
+              value={bookingFirstName}
+              onChange={(e) => setBookingFirstName(e.target.value.toUpperCase())}
+            />
+            <input
+              className="w-full border rounded-lg px-3 py-2 text-sm"
+              placeholder="Last name"
+              value={bookingLastName}
+              onChange={(e) => setBookingLastName(e.target.value.toUpperCase())}
+            />
+            <button
+              className="w-full bg-blue-600 text-white font-semibold py-2 rounded-lg"
+              onClick={handleBookTrip}
+            >
+              Confirm Booking
             </button>
           </div>
+        </div>
+      )}
+
+      {screen === 'account' && (
+        <div className="p-4 space-y-4">
+          <div className="bg-indigo-700 text-white rounded-2xl p-4">
+            <div className="text-lg font-semibold">{selectedPassenger?.firstName || 'Tomass'} {selectedPassenger?.lastName || 'Lakotko'}</div>
+            <div className="text-sm text-indigo-200">SkyMiles Member</div>
+            <div className="text-3xl font-semibold mt-2">0</div>
+            <div className="text-xs text-indigo-200">Miles Available</div>
+          </div>
+          <div className="bg-white rounded-2xl shadow-sm p-4">
+            <div className="text-sm font-semibold text-slate-600">STATUS PROGRESS</div>
+            <div className="flex items-center justify-center h-48">
+              <div className="h-40 w-40 rounded-full border-[12px] border-slate-300 flex items-center justify-center text-3xl font-semibold text-slate-500">
+                $0
+              </div>
+            </div>
+            <div className="text-xs text-slate-500 text-center">$0 MQDs to Medallion</div>
+          </div>
+        </div>
+      )}
+
+      {screen === 'more' && (
+        <div className="p-4 space-y-2">
+          {[
+            'Flight Status',
+            'Track My Bags',
+            'Delta Sky Club®',
+            'Airport Maps',
+            'Aircraft',
+            'Delta Amex Cards - Personal',
+            'Delta Amex Cards - Business',
+            'In-Flight Wi-Fi',
+            'Delta Studio®',
+            'Flight Schedules',
+            'Baggage & Travel Fees'
+          ].map((item) => (
+            <div key={item} className="bg-white rounded-xl shadow-sm p-4 flex items-center justify-between">
+              <span className="text-slate-700">{item}</span>
+              <ChevronRight className="w-5 h-5 text-red-500" />
+            </div>
+          ))}
         </div>
       )}
 
       {screen === 'add' && (
         <div className="p-4 space-y-4">
           <div className="bg-white rounded-xl shadow-sm p-4">
-            <h2 className="font-semibold mb-3">Add Reservation</h2>
+            <h2 className="font-semibold mb-3">Find My Trip</h2>
             <div className="space-y-3">
               <input
                 className="w-full border rounded-lg px-3 py-2"
@@ -397,42 +595,6 @@ export const MobilePassengerApp = () => {
         </div>
       )}
 
-      {screen === 'book' && (
-        <div className="p-4 space-y-4">
-          <div className="bg-white rounded-xl shadow-sm p-4">
-            <h2 className="font-semibold mb-3">Book a Flight</h2>
-            <div className="space-y-3">
-              <input
-                className="w-full border rounded-lg px-3 py-2"
-                placeholder="First name"
-                value={bookingFirstName}
-                onChange={(e) => setBookingFirstName(e.target.value.toUpperCase())}
-              />
-              <input
-                className="w-full border rounded-lg px-3 py-2"
-                placeholder="Last name"
-                value={bookingLastName}
-                onChange={(e) => setBookingLastName(e.target.value.toUpperCase())}
-              />
-              <select
-                className="w-full border rounded-lg px-3 py-2"
-                value={bookingFlightId}
-                onChange={(e) => setBookingFlightId(e.target.value)}
-              >
-                <option value="">Select flight</option>
-                {flights.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.flightNumber} · {f.origin}-{f.destination} · {f.std}
-                  </option>
-                ))}
-              </select>
-              <button className="w-full bg-blue-600 text-white rounded-lg py-2" onClick={handleBookTrip}>
-                Book
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {screen === 'seat' && selectedPassenger && selectedFlight && (
         <div className="p-4 space-y-4">
@@ -541,6 +703,25 @@ export const MobilePassengerApp = () => {
           </div>
         </div>
       )}
+
+      <div className="fixed bottom-0 left-0 right-0 bg-slate-900 text-white px-2 py-2">
+        <div className="grid grid-cols-5 text-[10px]">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = screen === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setScreen(item.id)}
+                className={clsx('flex flex-col items-center gap-1', isActive ? 'text-white' : 'text-slate-400')}
+              >
+                <Icon className="w-5 h-5" />
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 };
