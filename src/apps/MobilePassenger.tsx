@@ -348,26 +348,36 @@ export const MobilePassengerApp = () => {
       {screen === 'trips' && (
         <div className="p-4 space-y-4">
           <div className="text-lg font-semibold text-slate-800">My Flights ({tripPassengers.length})</div>
-          <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-            <div className="h-32 bg-gradient-to-r from-slate-700 to-slate-500" />
-            <div className="p-4 space-y-2">
-              <div className="flex items-center gap-2 text-xs text-slate-500">
-                <span className="bg-orange-500 text-white px-2 py-1 rounded-full">
-                  {selectedPassenger?.seat === 'SBY' ? 'STANDBY' : 'CONFIRMED'}
-                </span>
-                <span>Confirmation # {selectedPassenger?.pnr || '—'}</span>
+          {selectedPassenger ? (
+            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+              <div className="h-40 bg-gradient-to-r from-slate-800 via-slate-700 to-slate-500 relative">
+                <div className="absolute left-4 bottom-4">
+                  <span className="bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-semibold">
+                    {selectedPassenger.seat === 'SBY' ? 'STANDBY' : 'CONFIRMED'}
+                  </span>
+                </div>
               </div>
-              <div className="text-2xl font-semibold">
-                {selectedFlight ? `${selectedFlight.destination}` : 'No Trip'}
-              </div>
-              <div className="text-sm text-slate-600">
-                {selectedFlight ? `${selectedFlight.origin} - ${selectedFlight.destination}` : 'Add a reservation to view'}
-              </div>
-              <div className="text-sm text-slate-500">
-                {selectedFlight ? formatDate(selectedFlight.date) : ''}
+              <div className="p-4 space-y-2">
+                <div className="flex items-center justify-between text-xs text-slate-500">
+                  <span>{selectedPassenger.seat === 'SBY' ? 'Standby' : 'One Way'}</span>
+                  <span>Confirmation # {selectedPassenger.pnr}</span>
+                </div>
+                <div className="text-2xl font-semibold">
+                  {selectedFlight ? selectedFlight.destination : 'Trip details pending'}
+                </div>
+                <div className="text-sm text-slate-600">
+                  {selectedFlight ? `${selectedFlight.origin} - ${selectedFlight.destination}` : 'Flight information loading'}
+                </div>
+                <div className="text-sm text-slate-500">
+                  {selectedFlight ? formatDate(selectedFlight.date) : ''}
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="bg-white rounded-2xl shadow-sm p-6 text-slate-600">
+              No Trip. Add a reservation to view.
+            </div>
+          )}
 
           <div className="grid gap-3">
             <button
