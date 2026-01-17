@@ -7,7 +7,6 @@ import {
   Plane,
   Share2,
   Ticket,
-  User,
   Wifi,
   Armchair,
   ClipboardCheck
