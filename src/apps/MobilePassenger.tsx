@@ -73,6 +73,8 @@ export const MobilePassengerApp = () => {
   const [bookingFirstName, setBookingFirstName] = useState('');
   const [bookingLastName, setBookingLastName] = useState('');
   const [bookingFlightId, setBookingFlightId] = useState('');
+  const [searchDate, setSearchDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [showResults, setShowResults] = useState(false);
   const [seatSelection, setSeatSelection] = useState('');
   const [bagCount, setBagCount] = useState(0);
   const [paymentAmount, setPaymentAmount] = useState(0);
@@ -109,6 +111,11 @@ export const MobilePassengerApp = () => {
   const selectedFlight = selectedPassenger
     ? flights.find((f) => f.id === selectedPassenger.flightId)
     : null;
+
+  const flightsForDate = useMemo(() => {
+    if (!searchDate) return flights;
+    return flights.filter((f) => !f.date || f.date === searchDate);
+  }, [flights, searchDate]);
 
   useEffect(() => {
     if (selectedPassenger && selectedPassenger.pnr !== selectedPnr) {
@@ -161,6 +168,7 @@ export const MobilePassengerApp = () => {
     setBookingLastName('');
     setBookingFlightId('');
     setSuccess(`Booking created: ${newPnr}`);
+    setShowResults(false);
     setScreen('trips');
   };
 
@@ -225,6 +233,11 @@ export const MobilePassengerApp = () => {
       day: 'numeric',
       year: 'numeric'
     });
+  };
+
+  const formatTime = (time?: string) => {
+    if (!time) return 'TBA';
+    return time;
   };
 
   const navItems = [
@@ -436,7 +449,7 @@ export const MobilePassengerApp = () => {
               To {selectedFlight ? selectedFlight.destinationCity || selectedFlight.destination : 'Destination'}
             </div>
             <div className="text-sm text-slate-300 mt-2">
-              {selectedFlight ? formatDate(selectedFlight.date) : 'Date TBA'}
+              {selectedFlight ? `${formatDate(selectedFlight.date)} | ${formatTime(selectedFlight.std)}` : 'Date TBA'}
             </div>
           </div>
 
@@ -530,7 +543,12 @@ export const MobilePassengerApp = () => {
             </div>
             <div className="border rounded-xl p-3 flex items-center justify-between">
               <span className="text-sm text-slate-600">Date</span>
-              <input type="date" className="text-sm" />
+              <input
+                type="date"
+                className="text-sm"
+                value={searchDate}
+                onChange={(e) => setSearchDate(e.target.value)}
+              />
             </div>
             <div className="border rounded-xl p-3 flex items-center justify-between">
               <span className="text-sm text-slate-600">Passengers</span>
@@ -571,10 +589,40 @@ export const MobilePassengerApp = () => {
 
           <button
             className="w-full bg-red-600 text-white font-semibold py-3 rounded-xl"
-            onClick={() => setScreen('book')}
+            onClick={() => {
+              setShowResults(true);
+              setSuccess('');
+              setError('');
+            }}
           >
             Find Flights
           </button>
+
+          {showResults && (
+            <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
+              <div className="text-sm font-semibold">Available Flights</div>
+              {flightsForDate.length === 0 && (
+                <div className="text-sm text-slate-500">No flights for selected date.</div>
+              )}
+              {flightsForDate.map((f) => (
+                <button
+                  key={f.id}
+                  className={clsx(
+                    'w-full border rounded-lg p-3 text-left',
+                    bookingFlightId === f.id ? 'border-blue-500 bg-blue-50' : 'border-slate-200'
+                  )}
+                  onClick={() => setBookingFlightId(f.id)}
+                >
+                  <div className="font-semibold">
+                    {f.flightNumber} · {f.origin}-{f.destination}
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    {formatDate(f.date)} · {formatTime(f.std)}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
 
           <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
             <div className="text-sm font-semibold">Passenger Details</div>
@@ -590,6 +638,9 @@ export const MobilePassengerApp = () => {
               value={bookingLastName}
               onChange={(e) => setBookingLastName(e.target.value.toUpperCase())}
             />
+            <div className="text-xs text-slate-500">
+              Selected flight: {bookingFlightId ? bookingFlightId : 'none'}
+            </div>
             <button
               className="w-full bg-blue-600 text-white font-semibold py-2 rounded-lg"
               onClick={handleBookTrip}
