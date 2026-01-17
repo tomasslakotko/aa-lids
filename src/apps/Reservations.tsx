@@ -6,6 +6,43 @@ import { getMailgunFromAddress, generateBookingConfirmationHtml } from '../servi
 // Helper to generate PNR
 const generatePNR = () => Math.random().toString(36).substring(2, 8).toUpperCase();
 
+const formatFlightDate = (flight?: Flight) => {
+  const date = flight?.date ? new Date(flight.date) : new Date();
+  const day = date.getDate().toString().padStart(2, '0');
+  const month = date.toLocaleDateString('en-GB', { month: 'short' }).toUpperCase();
+  return `${day}${month}`;
+};
+
+const formatFlightDateYear = (flight?: Flight) => {
+  const date = flight?.date ? new Date(flight.date) : new Date();
+  const dayMonth = formatFlightDate({ ...flight, date: date.toISOString().split('T')[0] } as Flight);
+  const year = (date.getFullYear() % 100).toString().padStart(2, '0');
+  return `${dayMonth}${year}`;
+};
+
+const parseCommandDate = (cmd: string): string | null => {
+  const match = cmd.match(/(\d{2})(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)/);
+  if (!match) return null;
+  const day = match[1];
+  const monthMap: Record<string, string> = {
+    JAN: '01',
+    FEB: '02',
+    MAR: '03',
+    APR: '04',
+    MAY: '05',
+    JUN: '06',
+    JUL: '07',
+    AUG: '08',
+    SEP: '09',
+    OCT: '10',
+    NOV: '11',
+    DEC: '12'
+  };
+  const month = monthMap[match[2]];
+  const year = new Date().getFullYear();
+  return `${year}-${month}-${day}`;
+};
+
 // Types for the PNR being built
 interface WipPNR {
   segments: Flight[];
@@ -67,7 +104,9 @@ export const ReservationsApp = () => {
     // --- AVAILABILITY (AN) ---
     if (cmd.startsWith('AN')) {
       addLog('** AMADEUS AVAILABILITY - AN **');
-      addLog(`RP/RIX1A0988/RIX1A0988   ${new Date().toDateString()}`);
+      const requestedDate = parseCommandDate(cmd);
+      const headerDate = requestedDate ? new Date(requestedDate).toDateString() : new Date().toDateString();
+      addLog(`RP/RIX1A0988/RIX1A0988   ${headerDate}`);
       
       // Basic parsing: AN[DATE][ORG][DEST] or AN[ORG][DEST] or AN[ORG] or just AN (List all)
       // Regex to extract Origin (3 chars) and Dest (3 chars) from end of string
@@ -98,18 +137,25 @@ export const ReservationsApp = () => {
 
       if (origin && dest) {
          // Search Direct
-         const direct = flights.filter(f => f.origin === origin && f.destination === dest);
+         const direct = flights.filter(f => {
+           if (requestedDate && f.date && f.date !== requestedDate) return false;
+           return f.origin === origin && f.destination === dest;
+         });
          direct.forEach(f => foundFlights.push({ flight: f, type: 'DIRECT' }));
 
          // Search Connections (A -> B -> C)
          // Find flights from Origin to ANYWHERE (Leg 1)
-         const leg1Candidates = flights.filter(f => f.origin === origin);
+         const leg1Candidates = flights.filter(f => {
+           if (requestedDate && f.date && f.date !== requestedDate) return false;
+           return f.origin === origin;
+         });
          
          leg1Candidates.forEach(l1 => {
             // Find flights from l1.destination to Final Dest (Leg 2)
             // Must depart AFTER Leg 1 arrives with minimum connection time (1.5 hours)
             const leg2Candidates = flights.filter(f => {
                if (f.origin !== l1.destination || f.destination !== dest) return false;
+               if (requestedDate && f.date && f.date !== requestedDate) return false;
                
                // Calculate connection time
                const [l1Hour, l1Min] = l1.etd.split(':').map(Number);
@@ -137,11 +183,16 @@ export const ReservationsApp = () => {
 
       } else if (origin) {
          // Just show departures from origin
-         const departures = flights.filter(f => f.origin === origin);
+         const departures = flights.filter(f => {
+           if (requestedDate && f.date && f.date !== requestedDate) return false;
+           return f.origin === origin;
+         });
          departures.forEach(f => foundFlights.push({ flight: f, type: 'DIRECT' }));
       } else {
          // Show everything (fallback)
-         flights.forEach(f => foundFlights.push({ flight: f, type: 'DIRECT' }));
+         flights
+           .filter(f => !requestedDate || !f.date || f.date === requestedDate)
+           .forEach(f => foundFlights.push({ flight: f, type: 'DIRECT' }));
       }
 
       // Store search results for SS command
@@ -217,11 +268,11 @@ export const ReservationsApp = () => {
         setWipPnr(prev => ({ ...prev, segments: newSegments }));
         
         addLog(' ');
-        addLog(`1  ${flightToSell.flightNumber} ${classCode} 10NOV ${flightToSell.origin}${flightToSell.destination} HK1 ${flightToSell.std} ${flightToSell.etd} ${flightToSell.gate} E`);
+        addLog(`1  ${flightToSell.flightNumber} ${classCode} ${formatFlightDate(flightToSell)} ${flightToSell.origin}${flightToSell.destination} HK1 ${flightToSell.std} ${flightToSell.etd} ${flightToSell.gate} E`);
         
         // If it's a connection, mention the connecting flight
         if (selected.type === 'CONNECTING' && selected.connection) {
-          addLog(`2  ${selected.connection.flightNumber} ${classCode} 10NOV ${selected.connection.origin}${selected.connection.destination} HK1 ${selected.connection.std} ${selected.connection.etd} ${selected.connection.gate} E`);
+          addLog(`2  ${selected.connection.flightNumber} ${classCode} ${formatFlightDate(selected.connection)} ${selected.connection.origin}${selected.connection.destination} HK1 ${selected.connection.std} ${selected.connection.etd} ${selected.connection.gate} E`);
         }
         
         addLog(' ');
@@ -458,10 +509,10 @@ export const ReservationsApp = () => {
          });
          wipPnr.segments.forEach((s, i) => {
             const segNum = wipPnr.passengers.length + i + 1;
-            addLog(`  ${segNum}  ${s.flightNumber} Y 10NOV ${s.origin}${s.destination} HK${wipPnr.passengers.length}       ${s.std} ${s.etd}   ${s.gate} E`);
+           addLog(`  ${segNum}  ${s.flightNumber} Y ${formatFlightDate(s)} ${s.origin}${s.destination} HK${wipPnr.passengers.length}       ${s.std} ${s.etd}   ${s.gate} E`);
          });
          if (wipPnr.pricing) {
-            addLog(`  ${wipPnr.segments.length + wipPnr.passengers.length + 1} FA PAX 888-2401002232/LTU2/GBP${wipPnr.pricing.total.toFixed(2)}/10NOV13/RIX1A0988/000472 61/S3`);
+           addLog(`  ${wipPnr.segments.length + wipPnr.passengers.length + 1} FA PAX 888-2401002232/LTU2/GBP${wipPnr.pricing.total.toFixed(2)}/${formatFlightDateYear(wipPnr.segments[0])}/RIX1A0988/000472 61/S3`);
          }
          addLog(' ');
        }
@@ -521,7 +572,7 @@ export const ReservationsApp = () => {
          });
          
          wipPnr.segments.forEach((s) => {
-            addLog(`  ${lineIdx}  ${s.flightNumber} Y 10NOV ${s.origin}${s.destination} HK${wipPnr.passengers.length}       ${s.std} ${s.etd}   ${s.gate} E`);
+           addLog(`  ${lineIdx}  ${s.flightNumber} Y ${formatFlightDate(s)} ${s.origin}${s.destination} HK${wipPnr.passengers.length}       ${s.std} ${s.etd}   ${s.gate} E`);
             lineIdx++;
          });
          
@@ -536,7 +587,7 @@ export const ReservationsApp = () => {
          const chargeableSSRs = wipPnr.ssrs.filter(s => s.price > 0);
          chargeableSSRs.forEach((ssr, i) => {
             const segNum = wipPnr.passengers.length + wipPnr.segments.length + i + 1;
-            addLog(`  ${lineIdx} FA PAX 888-${Math.floor(Math.random() * 1000000000)}/LTU2/GBP${ssr.price.toFixed(2)}/10NOV13/RIX1A0988/00000000/S${segNum}`);
+           addLog(`  ${lineIdx} FA PAX 888-${Math.floor(Math.random() * 1000000000)}/LTU2/GBP${ssr.price.toFixed(2)}/${formatFlightDateYear(wipPnr.segments[0])}/RIX1A0988/00000000/S${segNum}`);
             lineIdx++;
          });
          
@@ -579,7 +630,7 @@ export const ReservationsApp = () => {
          });
          
          wipPnr.segments.forEach((s) => {
-            addLog(`  ${lineIdx}  ${s.flightNumber} Y 10NOV ${s.origin}${s.destination} HK${wipPnr.passengers.length}       ${s.std} ${s.etd}   ${s.gate} E`);
+           addLog(`  ${lineIdx}  ${s.flightNumber} Y ${formatFlightDate(s)} ${s.origin}${s.destination} HK${wipPnr.passengers.length}       ${s.std} ${s.etd}   ${s.gate} E`);
             lineIdx++;
          });
          
@@ -793,7 +844,7 @@ export const ReservationsApp = () => {
             lineIdx++;
          });
          wipPnr.segments.forEach(s => {
-            addLog(`  ${lineIdx}  ${s.flightNumber} Y 10NOV ${s.origin}${s.destination} HK${wipPnr.passengers.length}       ${s.std} ${s.etd}   ${s.gate} E`);
+           addLog(`  ${lineIdx}  ${s.flightNumber} Y ${formatFlightDate(s)} ${s.origin}${s.destination} HK${wipPnr.passengers.length}       ${s.std} ${s.etd}   ${s.gate} E`);
             lineIdx++;
          });
          wipPnr.contacts.forEach(c => {
@@ -889,17 +940,7 @@ export const ReservationsApp = () => {
           uniqueFlights.forEach((f) => {
              const paxCountOnFlight = uniquePassengers.length; 
              
-             // Format date as "10NOV" (day + month)
-             // Try to parse date from std, or use today's date
-             let flightDate = new Date();
-             if (f.std && f.std.includes('T')) {
-               flightDate = new Date(f.std);
-             } else if (f.std && f.std.match(/^\d{4}-\d{2}-\d{2}/)) {
-               flightDate = new Date(f.std);
-             }
-             const day = flightDate.getDate().toString().padStart(2, '0');
-             const month = flightDate.toLocaleDateString('en-GB', { month: 'short' }).toUpperCase();
-             const dateStr = `${day}${month}`;
+            const dateStr = formatFlightDate(f);
              
              const seatCode = foundEntries[0].passengerType === 'STAFF_SBY' ? 'SBY' : 'Y';
              addLog(`  ${lineIdx}  ${f.flightNumber} ${seatCode} ${dateStr} ${f.origin}${f.destination} HK${paxCountOnFlight}       ${f.std} ${f.etd}   ${f.gate} E`);
@@ -1016,7 +1057,7 @@ export const ReservationsApp = () => {
             lineIdx++;
          });
          wipPnr.segments.forEach(s => {
-            addLog(`  ${lineIdx}  ${s.flightNumber} Y 10NOV ${s.origin}${s.destination} HK${wipPnr.passengers.length}       ${s.std} ${s.etd}   ${s.gate} E`);
+           addLog(`  ${lineIdx}  ${s.flightNumber} Y ${formatFlightDate(s)} ${s.origin}${s.destination} HK${wipPnr.passengers.length}       ${s.std} ${s.etd}   ${s.gate} E`);
             lineIdx++;
          });
          wipPnr.contacts.forEach(c => {

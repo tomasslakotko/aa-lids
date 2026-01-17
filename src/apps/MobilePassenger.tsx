@@ -123,9 +123,28 @@ export const MobilePassengerApp = () => {
     [passengers, selectedPnr, tripPassengers]
   );
 
-  const selectedFlight = selectedPassenger
-    ? flights.find((f) => f.id === selectedPassenger.flightId)
-    : null;
+  const tripSegments = useMemo(() => {
+    if (!selectedPassenger) return [];
+    const segments = passengers
+      .filter((p) => p.pnr === selectedPassenger.pnr)
+      .map((p) => ({
+        passenger: p,
+        flight: flights.find((f) => f.id === p.flightId)
+      }))
+      .filter((seg) => seg.flight);
+
+    return segments.sort((a, b) => {
+      const dateA = a.flight?.date || '';
+      const dateB = b.flight?.date || '';
+      if (dateA !== dateB) return dateA.localeCompare(dateB);
+      return (a.flight?.std || '').localeCompare(b.flight?.std || '');
+    });
+  }, [selectedPassenger, passengers, flights]);
+
+  const selectedSegment =
+    tripSegments.find((seg) => seg.flight?.id === selectedPassenger?.flightId) || tripSegments[0];
+  const selectedFlight = selectedSegment?.flight || null;
+  const finalSegment = tripSegments[tripSegments.length - 1];
 
   const availableDates = useMemo(() => {
     const dates = flights.map((f) => f.date).filter(Boolean) as string[];
@@ -419,11 +438,11 @@ export const MobilePassengerApp = () => {
                   <span>{selectedPassenger.seat === 'SBY' ? 'Standby' : 'One Way'}</span>
                   <span>Confirmation # {selectedPassenger.pnr}</span>
                 </div>
-                <div className="text-2xl font-semibold">
-                  {selectedFlight ? selectedFlight.destination : 'Trip details pending'}
-                </div>
+            <div className="text-2xl font-semibold">
+              {finalSegment?.flight?.destination || selectedFlight?.destination || 'Trip details pending'}
+            </div>
                 <div className="text-sm text-slate-600">
-                  {selectedFlight ? `${selectedFlight.origin} - ${selectedFlight.destination}` : 'Flight information loading'}
+              {selectedFlight ? `${selectedFlight.origin} - ${selectedFlight.destination}` : 'Flight information loading'}
                 </div>
                 <div className="text-sm text-slate-500">
                   {selectedFlight ? formatDate(selectedFlight.date) : ''}
@@ -485,12 +504,39 @@ export const MobilePassengerApp = () => {
               Confirmation # {selectedPassenger.pnr}
             </div>
             <div className="text-3xl font-semibold mt-2">
-              To {selectedFlight ? selectedFlight.destinationCity || selectedFlight.destination : 'Destination'}
+              To {finalSegment?.flight?.destinationCity || finalSegment?.flight?.destination || selectedFlight?.destination || 'Destination'}
             </div>
             <div className="text-sm text-slate-300 mt-2">
               {selectedFlight ? `${formatDate(selectedFlight.date)} | ${formatTime(selectedFlight.std)}` : 'Date TBA'}
             </div>
           </div>
+
+          {tripSegments.length > 1 && (
+            <div>
+              <div className="text-lg font-semibold text-slate-800 mb-2">Trip Segments</div>
+              <div className="space-y-3">
+                {tripSegments.map((seg, index) => (
+                  <div key={seg.flight?.id || index} className="bg-white rounded-2xl shadow-sm p-4">
+                    <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
+                      <span>
+                        Segment {index + 1} of {tripSegments.length}
+                      </span>
+                      <span>{seg.flight?.flightNumber}</span>
+                    </div>
+                    <div className="text-lg font-semibold">
+                      {seg.flight?.origin} → {seg.flight?.destination}
+                    </div>
+                    <div className="text-sm text-slate-600">
+                      {formatDate(seg.flight?.date)} · {formatTime(seg.flight?.std)}
+                    </div>
+                    {index < tripSegments.length - 1 && (
+                      <div className="mt-2 text-xs text-slate-500">Connection</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="space-y-3">
             {[
