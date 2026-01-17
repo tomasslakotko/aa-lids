@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAirportStore } from '../store/airportStore';
 import { Check, Plane, Luggage, Printer, FileText, DollarSign, Plus, Minus, AlertCircle, History, MessageSquare, Star, X, Loader } from 'lucide-react';
 import QRCode from 'react-qr-code';
@@ -390,6 +390,7 @@ export const CheckInApp = () => {
   const [identPnr, setIdentPnr] = useState('');
   const [identFlight, setIdentFlight] = useState('');
   const [identFlightPrefix, setIdentFlightPrefix] = useState('BT');
+  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
   
   // Selection/Acceptance State
   const [selectedPnr, setSelectedPnr] = useState<string | null>(null);
@@ -445,18 +446,25 @@ export const CheckInApp = () => {
   const sendEmailConfirmation = useAirportStore((state) => state.sendEmailConfirmation);
 
   // Derived Data
-  const foundPassenger = selectedPnr ? passengers.find(p => p.pnr === selectedPnr) : null;
+  const flightsForDate = selectedDate
+    ? flights.filter(f => !f.date || f.date === selectedDate)
+    : flights;
+  const flightIdSet = new Set(flightsForDate.map(f => f.id));
+  const passengersForDate = selectedDate
+    ? passengers.filter(p => flightIdSet.has(p.flightId))
+    : passengers;
+  const foundPassenger = selectedPnr ? passengersForDate.find(p => p.pnr === selectedPnr) : null;
   
   // Find all flight segments for this passenger (same PNR)
   const passengerSegments = selectedPnr 
-    ? passengers.filter(p => p.pnr === selectedPnr)
+    ? passengersForDate.filter(p => p.pnr === selectedPnr)
     : [];
     
   // Sort segments by flight number for now (ideal would be by time, but need full flight objects)
   // Filter out segments where the flight doesn't exist (data inconsistency)
   const sortedSegments = passengerSegments
     .map(p => {
-       const f = flights.find(flight => flight.id === p.flightId);
+       const f = flightsForDate.find(flight => flight.id === p.flightId);
        if (!f) {
          console.warn(`CheckIn: Passenger ${p.id} has invalid flightId: ${p.flightId}`);
        }
@@ -470,20 +478,37 @@ export const CheckInApp = () => {
     console.warn(`CheckIn: PNR ${selectedPnr} has ${passengerSegments.length} passenger records but only ${sortedSegments.length} valid flight segments`);
   }
 
-  const foundFlight = foundPassenger ? flights.find(f => f.id === foundPassenger.flightId) : null;
+  const foundFlight = foundPassenger ? flightsForDate.find(f => f.id === foundPassenger.flightId) : null;
+  const isFlightClosed = foundFlight ? ['DEPARTED', 'ARRIVED'].includes(foundFlight.status) : false;
+  const isPassengerEditable = !!foundPassenger && !isFlightClosed;
   
   // Helper to format seat map
   const occupiedSeats = foundFlight 
-    ? passengers.filter(p => p.flightId === foundFlight.id).map(p => p.seat)
+    ? passengersForDate.filter(p => p.flightId === foundFlight.id).map(p => p.seat)
     : [];
+
+  useEffect(() => {
+    if (selectedPnr && !passengersForDate.find(p => p.pnr === selectedPnr)) {
+      setSelectedPnr(null);
+      setCurrentScreen('IDENTIFICATION');
+    }
+  }, [selectedPnr, passengersForDate]);
     
   const handleUpgrade = () => {
+     if (isFlightClosed) {
+        alert('FLIGHT CLOSED - EDITING DISABLED');
+        return;
+     }
      if (!foundPassenger) return;
      updatePassengerDetails(foundPassenger.pnr, { seat: '1A' }); // Simplistic upgrade logic
      alert(`Passenger upgraded to 1A`);
   };
 
   const handleDowngrade = () => {
+     if (isFlightClosed) {
+        alert('FLIGHT CLOSED - EDITING DISABLED');
+        return;
+     }
      if (!foundPassenger) return;
      updatePassengerDetails(foundPassenger.pnr, { seat: '15A' }); // Simplistic downgrade logic
      alert(`Passenger downgraded to 15A`);
@@ -496,6 +521,10 @@ export const CheckInApp = () => {
   };
 
   const handleBaggage = () => {
+      if (isFlightClosed) {
+          alert('FLIGHT CLOSED - EDITING DISABLED');
+          return;
+      }
       if (foundPassenger) {
           setCurrentScreen('BAGGAGE');
       }
@@ -525,6 +554,10 @@ export const CheckInApp = () => {
 
   const openDocVerifyModal = () => {
       if (!foundPassenger) return;
+      if (isFlightClosed) {
+          alert('FLIGHT CLOSED - EDITING DISABLED');
+          return;
+      }
       setDocVerifyStatus(foundPassenger.documentVerifyStatus || 'PENDING');
       setDocVerifyNote(foundPassenger.documentVerifyNote || '');
       setShowDocVerifyModal(true);
@@ -532,6 +565,10 @@ export const CheckInApp = () => {
 
   const openBagWaiverModal = () => {
       if (!foundPassenger) return;
+      if (isFlightClosed) {
+          alert('FLIGHT CLOSED - EDITING DISABLED');
+          return;
+      }
       setBagWaiverPcs(foundPassenger.bagWaiverPcs || 0);
       setBagWaiverKg(foundPassenger.bagWaiverKg || 0);
       setBagWaiverReason(foundPassenger.bagWaiverReason || '');
@@ -539,6 +576,10 @@ export const CheckInApp = () => {
   };
 
   const handleCancelCheckIn = () => {
+      if (isFlightClosed) {
+          alert('FLIGHT CLOSED - EDITING DISABLED');
+          return;
+      }
       if (foundPassenger && foundPassenger.status === 'CHECKED_IN') {
           if (confirm(`Cancel check-in for ${foundPassenger.lastName} ${foundPassenger.firstName} (${foundPassenger.pnr})?`)) {
               const success = cancelCheckIn(foundPassenger.pnr);
@@ -554,7 +595,7 @@ export const CheckInApp = () => {
 
   const handleIdentify = () => {
     const term = (identPnr || identName).toUpperCase();
-    const match = passengers.find(p => p.pnr === term || p.lastName === term);
+    const match = passengersForDate.find(p => p.pnr === term || p.lastName === term);
     
     if (match) {
       setSelectedPnr(match.pnr);
@@ -567,6 +608,10 @@ export const CheckInApp = () => {
   };
 
   const handleAccept = async () => {
+    if (isFlightClosed) {
+      alert('FLIGHT CLOSED - EDITING DISABLED');
+      return;
+    }
     if (foundPassenger && foundPassenger.status === 'BOOKED') {
       updatePassengerDetails(foundPassenger.pnr, { 
         bagCount: parseInt(bagPcs), 
@@ -582,6 +627,10 @@ export const CheckInApp = () => {
   };
   
   const handleSeatChange = (newSeat: string) => {
+      if (isFlightClosed) {
+          alert('FLIGHT CLOSED - EDITING DISABLED');
+          return;
+      }
       if (foundPassenger) {
           updatePassengerDetails(foundPassenger.pnr, { seat: newSeat });
           setCurrentScreen('ACCEPTANCE');
@@ -624,6 +673,10 @@ export const CheckInApp = () => {
 
   const handleSaveDocVerify = () => {
     if (!foundPassenger) return;
+    if (isFlightClosed) {
+      alert('FLIGHT CLOSED - EDITING DISABLED');
+      return;
+    }
     updatePassengerDetails(foundPassenger.pnr, {
       documentVerifyStatus: docVerifyStatus,
       documentVerifyNote: docVerifyNote || undefined,
@@ -639,6 +692,10 @@ export const CheckInApp = () => {
 
   const handleSaveBagWaiver = () => {
     if (!foundPassenger) return;
+    if (isFlightClosed) {
+      alert('FLIGHT CLOSED - EDITING DISABLED');
+      return;
+    }
     const pcs = Math.max(0, Number(bagWaiverPcs) || 0);
     const kg = Math.max(0, Number(bagWaiverKg) || 0);
     const reason = bagWaiverReason.trim();
@@ -662,6 +719,10 @@ export const CheckInApp = () => {
   };
   
   const handleProcessPayment = async () => {
+    if (isFlightClosed) {
+      alert('FLIGHT CLOSED - EDITING DISABLED');
+      return;
+    }
     if (foundPassenger && paymentAmount > 0) {
       // If card payment, show processing emulator
       if (paymentMethod === 'CARD') {
@@ -751,6 +812,10 @@ export const CheckInApp = () => {
   };
   
   const handleSaveServices = () => {
+    if (isFlightClosed) {
+      alert('FLIGHT CLOSED - EDITING DISABLED');
+      return;
+    }
     if (foundPassenger) {
       const updates: any = {};
       const newPaymentItems: Array<{description: string; quantity: number; unitPrice: number; total: number}> = [];
@@ -901,20 +966,20 @@ export const CheckInApp = () => {
             
             <div className="bg-gradient-to-b from-[#EBE9E3] to-[#D4D0C8] px-2 py-1 font-bold border-b border-white border-t border-[#A0A0A0] text-gray-700">Menus</div>
             <div className="p-2 space-y-1">
-                <button disabled={!foundPassenger} onClick={() => setShowSbyModal(true)} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Set SBY Status</span></button>
-                <button disabled={!foundPassenger} onClick={() => setShowCommentModal(true)} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Add Comment</span></button>
+                <button disabled={!isPassengerEditable} onClick={() => setShowSbyModal(true)} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Set SBY Status</span></button>
+                <button disabled={!isPassengerEditable} onClick={() => setShowCommentModal(true)} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Add Comment</span></button>
                 <button disabled={!foundPassenger} onClick={() => setShowLogsModal(true)} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>View Logs</span></button>
-                <button disabled={!foundPassenger} onClick={openDocVerifyModal} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Document Verify</span></button>
-                <button disabled={!foundPassenger} onClick={openBagWaiverModal} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Bag Waiver</span></button>
-                <button disabled={!foundPassenger} onClick={() => setShowPaymentModal(true)} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Price & Payment</span></button>
-                <button disabled={!foundPassenger} onClick={() => setShowServicesModal(true)} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Services</span></button>
+                <button disabled={!isPassengerEditable} onClick={openDocVerifyModal} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Document Verify</span></button>
+                <button disabled={!isPassengerEditable} onClick={openBagWaiverModal} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Bag Waiver</span></button>
+                <button disabled={!isPassengerEditable} onClick={() => setShowPaymentModal(true)} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Price & Payment</span></button>
+                <button disabled={!isPassengerEditable} onClick={() => setShowServicesModal(true)} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Services</span></button>
                 <div className="h-px bg-gray-300 my-1"></div>
-                <button disabled={!foundPassenger} onClick={handleUpgrade} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Upgrade Class</span><span className="text-gray-400">SF4</span></button>
-                <button disabled={!foundPassenger} onClick={handleDowngrade} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Downgrade Class</span></button>
-                <button disabled={!foundPassenger} onClick={handleFqtv} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Add FQTV</span></button>
-                <button disabled={!foundPassenger} onClick={handleBaggage} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Baggage</span></button>
+                <button disabled={!isPassengerEditable} onClick={handleUpgrade} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Upgrade Class</span><span className="text-gray-400">SF4</span></button>
+                <button disabled={!isPassengerEditable} onClick={handleDowngrade} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Downgrade Class</span></button>
+                <button disabled={!isPassengerEditable} onClick={handleFqtv} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Add FQTV</span></button>
+                <button disabled={!isPassengerEditable} onClick={handleBaggage} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Baggage</span></button>
                 <button disabled={!foundPassenger} onClick={handlePrint} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Print BP/Tags</span><span className="text-gray-400">P</span></button>
-                <button disabled={!foundPassenger || foundPassenger?.status !== 'CHECKED_IN'} onClick={handleCancelCheckIn} className="w-full text-left flex justify-between hover:bg-[#DC3545] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span className="text-red-600">Cancel Check-In</span></button>
+                <button disabled={!isPassengerEditable || foundPassenger?.status !== 'CHECKED_IN'} onClick={handleCancelCheckIn} className="w-full text-left flex justify-between hover:bg-[#DC3545] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span className="text-red-600">Cancel Check-In</span></button>
             </div>
             
             <div className="bg-gradient-to-b from-[#EBE9E3] to-[#D4D0C8] px-2 py-1 font-bold border-b border-white border-t border-[#A0A0A0] text-gray-700">System</div>
@@ -976,7 +1041,12 @@ export const CheckInApp = () => {
                             <LegacyInput value={identFlight} onChange={(e: any) => setIdentFlight(e.target.value)} width="w-20" />
                         </div>
                         <label className="font-bold text-gray-800">Date:</label>
-                        <LegacyInput value={new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase()} width="w-24" readOnly />
+                        <input
+                          type="date"
+                          value={selectedDate}
+                          onChange={(e) => setSelectedDate(e.target.value)}
+                          className="h-6 border border-[#7F9DB9] bg-white px-1 text-xs outline-none focus:border-blue-500 w-28"
+                        />
                         <label className="font-bold text-gray-800">From:</label>
                         <LegacyInput value="RIX" width="w-16" readOnly />
                         <label className="font-bold text-gray-800">To:</label>
@@ -1038,6 +1108,9 @@ export const CheckInApp = () => {
                                   {(seg.passenger.bagWaiverPcs || seg.passenger.bagWaiverKg) && (
                                     <span className="bg-blue-500 text-blue-900 px-1.5 py-0.5 rounded text-[9px] font-bold border border-blue-600">WVR</span>
                                   )}
+                                  {seg.flight && ['DEPARTED', 'ARRIVED'].includes(seg.flight.status) && (
+                                    <span className="bg-gray-700 text-gray-100 px-1.5 py-0.5 rounded text-[9px] font-bold border border-gray-800">FLOWN</span>
+                                  )}
                                 </div>
                               ) : ''}
                            </td>
@@ -1082,6 +1155,9 @@ export const CheckInApp = () => {
                 <div className="flex items-center gap-2 bg-blue-50 p-1 border border-blue-200 mb-2">
                     <div className="bg-blue-600 text-white rounded-full w-4 h-4 flex items-center justify-center font-bold text-[10px]">i</div>
                     <span className="text-blue-800">Enter bag details and seat preference (if required).</span>
+                    {isFlightClosed && (
+                      <span className="ml-auto text-red-600 font-bold text-[10px]">FLIGHT CLOSED - READ ONLY</span>
+                    )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-8 px-4">
@@ -1093,14 +1169,16 @@ export const CheckInApp = () => {
                               type="number" 
                               value={bagPcs} 
                               onChange={(e) => setBagPcs(e.target.value)}
-                              className="w-8 border border-[#7F9DB9] px-1 text-right" 
+                              className="w-8 border border-[#7F9DB9] px-1 text-right disabled:bg-gray-100 disabled:text-gray-500" 
+                              disabled={isFlightClosed}
                             />
                             <span>/</span>
                             <input 
                               type="number" 
                               value={bagKg} 
                               onChange={(e) => setBagKg(e.target.value)}
-                              className="w-10 border border-[#7F9DB9] px-1 text-right" 
+                              className="w-10 border border-[#7F9DB9] px-1 text-right disabled:bg-gray-100 disabled:text-gray-500" 
+                              disabled={isFlightClosed}
                             />
                             <span>KG</span>
                         </div>
@@ -1110,10 +1188,11 @@ export const CheckInApp = () => {
                         <span className="absolute -top-2.5 left-0 bg-[#FFFBE6] px-1 font-bold text-gray-600">Seating</span>
                         <div className="flex items-center gap-2 mt-2">
                             <label>Seat Preference:</label>
-                            <LegacyInput width="w-24" />
+                            <LegacyInput width="w-24" readOnly={isFlightClosed} />
                             <button 
                                 onClick={() => setCurrentScreen('SEAT_MAP')}
-                                className="bg-[#E0E0E0] border border-gray-400 px-2 rounded text-[10px] hover:bg-white"
+                                className="bg-[#E0E0E0] border border-gray-400 px-2 rounded text-[10px] hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled={isFlightClosed}
                             >
                                 Map
                             </button>
@@ -1130,7 +1209,7 @@ export const CheckInApp = () => {
                     ) : (
                         <div className="text-red-500 flex justify-between items-center">
                             <span>MISSING TRAVEL DOCUMENTS</span>
-                            <button onClick={swipeDocument} className="underline text-blue-600 hover:text-blue-800">
+                            <button onClick={swipeDocument} disabled={isFlightClosed} className="underline text-blue-600 hover:text-blue-800 disabled:text-gray-400 disabled:no-underline">
                                 [Simulate Swipe]
                             </button>
                         </div>
@@ -1140,7 +1219,7 @@ export const CheckInApp = () => {
                 <div className="flex justify-end gap-2 mt-2">
                     <LegacyButton>Advanced Options [F2]</LegacyButton>
                     <LegacyButton onClick={() => setCurrentScreen('IDENTIFICATION')}>Back</LegacyButton>
-                    <LegacyButton primary onClick={handleAccept}>
+                    <LegacyButton primary onClick={handleAccept} disabled={isFlightClosed}>
                         {foundPassenger.status === 'CHECKED_IN' ? 'Modify' : 'Accept'}
                     </LegacyButton>
                 </div>
@@ -1180,7 +1259,8 @@ export const CheckInApp = () => {
                                      type="number" 
                                      value={editWeight} 
                                      onChange={(e) => setEditWeight(e.target.value)}
-                                     className="w-12 border border-blue-500 px-1 text-right"
+                                     className="w-12 border border-blue-500 px-1 text-right disabled:bg-gray-100 disabled:text-gray-500"
+                                     disabled={isFlightClosed}
                                      autoFocus
                                    />
                                    <span className="text-xs">KG</span>
@@ -1193,12 +1273,12 @@ export const CheckInApp = () => {
                            <td className="px-2 py-1 font-bold">{foundFlight?.destination}</td>
                            <td className="px-2 py-1 text-right">
                               {editingBagIndex === i ? (
-                                <LegacyButton primary onClick={() => {
+                                <LegacyButton primary disabled={isFlightClosed} onClick={() => {
                                    setCustomBagWeights(prev => ({ ...prev, [weightKey]: parseFloat(editWeight) || 0 }));
                                    setEditingBagIndex(null);
                                 }}>Save</LegacyButton>
                               ) : (
-                                <LegacyButton onClick={() => {
+                                <LegacyButton disabled={isFlightClosed} onClick={() => {
                                    setEditingBagIndex(i);
                                    setEditWeight(currentWeight.toString());
                                 }}>Edit</LegacyButton>
@@ -1226,7 +1306,7 @@ export const CheckInApp = () => {
                 </div>
                 
                 <div className="flex gap-2">
-                    <LegacyButton primary onClick={() => {
+                    <LegacyButton primary disabled={isFlightClosed} onClick={() => {
                       const paidBags = (foundPassenger as any).paidBags || 0;
                       const currentBags = foundPassenger.bagCount;
                       const newBagCount = currentBags + 1;
@@ -1240,7 +1320,7 @@ export const CheckInApp = () => {
                     }}>
                        + Add Bag (23KG){(foundPassenger as any).paidBags ? ` [${foundPassenger.bagCount + 1}/${(foundPassenger as any).paidBags} paid]` : ''}
                     </LegacyButton>
-                    <LegacyButton onClick={() => updatePassengerDetails(foundPassenger.pnr, { bagCount: Math.max(0, foundPassenger.bagCount - 1) })} disabled={foundPassenger.bagCount === 0}>
+                    <LegacyButton onClick={() => updatePassengerDetails(foundPassenger.pnr, { bagCount: Math.max(0, foundPassenger.bagCount - 1) })} disabled={isFlightClosed || foundPassenger.bagCount === 0}>
                        - Remove Bag
                     </LegacyButton>
                     <div className="w-px bg-gray-300 mx-2" />
@@ -1257,6 +1337,7 @@ export const CheckInApp = () => {
                  <span className="font-bold text-blue-800 mr-4">Select Seats:</span>
                  <input value={foundPassenger.seat} readOnly className="bg-[#FFF2CC] border border-[#7F9DB9] w-12 text-center font-bold" />
                  <span className="ml-4 text-gray-600">( {foundFlight?.origin} ➔ {foundFlight?.destination} )</span>
+                 {isFlightClosed && <span className="ml-4 text-red-600 font-bold text-[10px]">FLIGHT CLOSED - READ ONLY</span>}
              </div>
 
              <div className="flex-1 bg-[#FEFEFE] border border-[#7F9DB9] relative overflow-auto p-8 flex justify-center">
@@ -1283,10 +1364,11 @@ export const CheckInApp = () => {
                                       return (
                                         <button 
                                           key={seatId}
-                                          disabled={isOccupied}
+                                          disabled={isOccupied || isFlightClosed}
                                           onClick={() => handleSeatChange(seatId)}
                                           className={clsx(
                                             "w-8 h-10 rounded-t-lg border border-gray-400 text-[10px] flex items-center justify-center font-bold shadow-sm transition-all",
+                                            isFlightClosed ? "bg-gray-200 text-gray-500 cursor-not-allowed" :
                                             isOccupied ? "bg-gray-300 text-gray-500 cursor-not-allowed" :
                                             isSelected ? "bg-cyan-300 border-cyan-600 text-cyan-900 scale-110 z-10" :
                                             "bg-white hover:bg-cyan-50 text-gray-600"
@@ -1313,10 +1395,11 @@ export const CheckInApp = () => {
                                       return (
                                         <button 
                                           key={seatId}
-                                          disabled={isOccupied}
+                                          disabled={isOccupied || isFlightClosed}
                                           onClick={() => handleSeatChange(seatId)}
                                           className={clsx(
                                             "w-8 h-10 rounded-t-lg border border-gray-400 text-[10px] flex items-center justify-center font-bold shadow-sm transition-all",
+                                            isFlightClosed ? "bg-gray-200 text-gray-500 cursor-not-allowed" :
                                             isOccupied ? "bg-gray-300 text-gray-500 cursor-not-allowed" :
                                             isSelected ? "bg-cyan-300 border-cyan-600 text-cyan-900 scale-110 z-10" :
                                             "bg-white hover:bg-cyan-50 text-gray-600"
@@ -1343,7 +1426,7 @@ export const CheckInApp = () => {
                  </div>
                  <div className="flex gap-2">
                      <LegacyButton onClick={() => setCurrentScreen('ACCEPTANCE')}>Cancel</LegacyButton>
-                     <LegacyButton primary onClick={() => setCurrentScreen('ACCEPTANCE')}>Confirm Seat</LegacyButton>
+                     <LegacyButton primary onClick={() => setCurrentScreen('ACCEPTANCE')} disabled={isFlightClosed}>Confirm Seat</LegacyButton>
                  </div>
              </div>
           </div>

@@ -16,6 +16,7 @@ export interface Flight {
   destinationCity?: string;
   std: string; // Scheduled Time of Departure (ISO string or HH:mm)
   etd: string; // Estimated Time of Departure
+  date?: string; // YYYY-MM-DD
   gate: string;
   status: FlightStatus;
   aircraft: string; // e.g. B744
@@ -242,6 +243,15 @@ const randomTime = (startHour: number, endHour: number) => {
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
 };
 
+const toISODate = (date: Date) => date.toISOString().split('T')[0];
+
+const randomFlightDate = () => {
+  const base = new Date();
+  const offsetDays = Math.floor(Math.random() * 3); // today + next 2 days
+  base.setDate(base.getDate() + offsetDays);
+  return toISODate(base);
+};
+
 // Add duration to time string "HH:MM"
 // @ts-ignore
 const addDuration = (time: string, minutesToAdd: number) => {
@@ -291,6 +301,7 @@ const generateFlights = (): Flight[] => {
   // 1. Outbound from Hub (RIX) - Early Morning Wave (6-8)
   DESTINATIONS.slice(0, Math.floor(DESTINATIONS.length * 0.4)).forEach(dest => {
      const std = randomTime(6, 8);
+     const date = randomFlightDate();
      flights.push({
        id: Math.random().toString(36).substr(2, 9),
        flightNumber: `${dest.airline}${dest.flightNum}`,
@@ -300,6 +311,7 @@ const generateFlights = (): Flight[] => {
        destinationCity: dest.city,
        std: std,
        etd: std,
+       date: date,
        gate: ['A', 'B', 'C'][Math.floor(Math.random()*3)] + Math.floor(Math.random() * 25 + 1),
        status: 'SCHEDULED',
        aircraft: getAircraft(dest.airline),
@@ -310,6 +322,7 @@ const generateFlights = (): Flight[] => {
   // 2. Outbound from Hub (RIX) - Morning Wave (8-10)
   DESTINATIONS.forEach(dest => {
      const std = randomTime(8, 10);
+     const date = randomFlightDate();
      flights.push({
        id: Math.random().toString(36).substr(2, 9),
        flightNumber: `${dest.airline}${dest.flightNum + 20}`,
@@ -319,6 +332,7 @@ const generateFlights = (): Flight[] => {
        destinationCity: dest.city,
        std: std,
        etd: std,
+       date: date,
        gate: ['A', 'B', 'C'][Math.floor(Math.random()*3)] + Math.floor(Math.random() * 25 + 1),
        status: 'SCHEDULED',
        aircraft: getAircraft(dest.airline),
@@ -329,6 +343,7 @@ const generateFlights = (): Flight[] => {
   // 3. Outbound from Hub (RIX) - Late Morning Wave (10-12)
   DESTINATIONS.slice(0, Math.floor(DESTINATIONS.length * 0.7)).forEach(dest => {
      const std = randomTime(10, 12);
+     const date = randomFlightDate();
      flights.push({
        id: Math.random().toString(36).substr(2, 9),
        flightNumber: `${dest.airline}${dest.flightNum + 30}`,
@@ -338,6 +353,7 @@ const generateFlights = (): Flight[] => {
        destinationCity: dest.city,
        std: std,
        etd: std,
+       date: date,
        gate: ['A', 'B', 'C'][Math.floor(Math.random()*3)] + Math.floor(Math.random() * 25 + 1),
        status: 'SCHEDULED',
        aircraft: getAircraft(dest.airline),
@@ -348,6 +364,7 @@ const generateFlights = (): Flight[] => {
   // 4. Outbound from Hub (RIX) - Midday Wave (12-14)
   DESTINATIONS.slice(0, Math.floor(DESTINATIONS.length * 0.6)).forEach(dest => {
      const std = randomTime(12, 14);
+     const date = randomFlightDate();
      flights.push({
        id: Math.random().toString(36).substr(2, 9),
        flightNumber: `${dest.airline}${dest.flightNum + 40}`,
@@ -357,6 +374,7 @@ const generateFlights = (): Flight[] => {
        destinationCity: dest.city,
        std: std,
        etd: std,
+       date: date,
        gate: ['A', 'B', 'C'][Math.floor(Math.random()*3)] + Math.floor(Math.random() * 25 + 1),
        status: 'SCHEDULED',
        aircraft: getAircraft(dest.airline),
@@ -367,6 +385,7 @@ const generateFlights = (): Flight[] => {
   // 5. Outbound from Hub (RIX) - Afternoon Wave (14-16)
   DESTINATIONS.slice(0, Math.floor(DESTINATIONS.length * 0.5)).forEach(dest => {
      const std = randomTime(14, 16);
+     const date = randomFlightDate();
      flights.push({
        id: Math.random().toString(36).substr(2, 9),
        flightNumber: `${dest.airline}${dest.flightNum + 50}`,
@@ -376,6 +395,7 @@ const generateFlights = (): Flight[] => {
        destinationCity: dest.city,
        std: std,
        etd: std,
+       date: date,
        gate: ['A', 'B', 'C'][Math.floor(Math.random()*3)] + Math.floor(Math.random() * 25 + 1),
        status: 'SCHEDULED',
        aircraft: getAircraft(dest.airline),
@@ -386,6 +406,7 @@ const generateFlights = (): Flight[] => {
   // 6. Outbound from Hub (RIX) - Evening Wave (16-19)
   DESTINATIONS.slice(0, Math.floor(DESTINATIONS.length * 0.4)).forEach(dest => {
      const std = randomTime(16, 19);
+     const date = randomFlightDate();
      flights.push({
        id: Math.random().toString(36).substr(2, 9),
        flightNumber: `${dest.airline}${dest.flightNum + 60}`,
@@ -395,6 +416,7 @@ const generateFlights = (): Flight[] => {
        destinationCity: dest.city,
        std: std,
        etd: std,
+       date: date,
        gate: ['A', 'B', 'C'][Math.floor(Math.random()*3)] + Math.floor(Math.random() * 25 + 1),
        status: 'SCHEDULED',
        aircraft: getAircraft(dest.airline),
@@ -405,6 +427,7 @@ const generateFlights = (): Flight[] => {
   // 7. Outbound from Hub (RIX) - Late Evening Wave (19-21)
   DESTINATIONS.slice(0, Math.floor(DESTINATIONS.length * 0.3)).forEach(dest => {
      const std = randomTime(19, 21);
+     const date = randomFlightDate();
      flights.push({
        id: Math.random().toString(36).substr(2, 9),
        flightNumber: `${dest.airline}${dest.flightNum + 70}`,
@@ -414,6 +437,7 @@ const generateFlights = (): Flight[] => {
        destinationCity: dest.city,
        std: std,
        etd: std,
+       date: date,
        gate: ['A', 'B', 'C'][Math.floor(Math.random()*3)] + Math.floor(Math.random() * 25 + 1),
        status: 'SCHEDULED',
        aircraft: getAircraft(dest.airline),
@@ -424,6 +448,7 @@ const generateFlights = (): Flight[] => {
   // 3. Inbound to Hub (RIX) - Afternoon/Evening Wave (14-19)
   DESTINATIONS.forEach(dest => {
      const std = randomTime(14, 19);
+     const date = randomFlightDate();
      flights.push({
        id: Math.random().toString(36).substr(2, 9),
        flightNumber: `${dest.airline}${dest.flightNum + 1}`,
@@ -433,6 +458,7 @@ const generateFlights = (): Flight[] => {
        destinationCity: 'Riga',
        std: std,
        etd: std,
+       date: date,
        gate: ['A', 'B', 'C'][Math.floor(Math.random()*3)] + Math.floor(Math.random() * 25 + 1),
        status: 'SCHEDULED',
        aircraft: getAircraft(dest.airline),
@@ -495,6 +521,7 @@ const generateFlights = (): Flight[] => {
         // Departures between 12:00-17:00 for better connection timing
         // This ensures connections work with morning RIX->Hub flights
         const depTime = randomTime(12, 17);
+        const date = randomFlightDate();
         
         flights.push({
           id: Math.random().toString(36).substr(2, 9),
@@ -505,6 +532,7 @@ const generateFlights = (): Flight[] => {
           destinationCity: dest.city,
           std: depTime,
           etd: depTime,
+          date: date,
           gate: 'X' + Math.floor(Math.random() * 99),
           status: 'SCHEDULED',
           aircraft: ['A333', 'B777', 'B787', 'A350', 'B77W', 'A380'][Math.floor(Math.random() * 6)],
@@ -515,6 +543,7 @@ const generateFlights = (): Flight[] => {
         if (Math.random() > 0.5) {
           const flightNum2 = Math.floor(Math.random() * 999) + 1;
           const depTime2 = randomTime(13, 18); // Slightly later for second flight
+          const date2 = randomFlightDate();
           
           flights.push({
             id: Math.random().toString(36).substr(2, 9),
@@ -525,6 +554,7 @@ const generateFlights = (): Flight[] => {
             destinationCity: dest.city,
             std: depTime2,
             etd: depTime2,
+            date: date2,
             gate: 'X' + Math.floor(Math.random() * 99),
             status: 'SCHEDULED',
             aircraft: ['A333', 'B777', 'B787', 'A350', 'B77W', 'A380'][Math.floor(Math.random() * 6)],

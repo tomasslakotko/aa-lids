@@ -2,9 +2,13 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import { MobilePassengerApp } from './apps/MobilePassenger'
 
-createRoot(document.getElementById('root')!).render(
+const root = document.getElementById('root')!;
+const isMobileRoute = window.location.pathname.startsWith('/mobile');
+
+createRoot(root).render(
   <StrictMode>
-    <App />
+    {isMobileRoute ? <MobilePassengerApp /> : <App />}
   </StrictMode>,
 )
