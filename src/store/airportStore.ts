@@ -47,6 +47,12 @@ export interface Passenger {
   securityStatus?: SecurityStatus; // Security screening status
   securityNote?: string; // Security officer notes
   boardingComment?: string; // Boarding gate agent comment/notes
+  documentVerifyStatus?: 'PENDING' | 'VERIFIED' | 'FLAGGED';
+  documentVerifyNote?: string;
+  documentVerifyDate?: string;
+  bagWaiverPcs?: number;
+  bagWaiverKg?: number;
+  bagWaiverReason?: string;
 }
 
 export interface LogEntry {

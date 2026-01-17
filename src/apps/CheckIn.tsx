@@ -410,6 +410,13 @@ export const CheckInApp = () => {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showServicesModal, setShowServicesModal] = useState(false);
   const [showCardProcessing, setShowCardProcessing] = useState(false);
+  const [showDocVerifyModal, setShowDocVerifyModal] = useState(false);
+  const [showBagWaiverModal, setShowBagWaiverModal] = useState(false);
+  const [docVerifyStatus, setDocVerifyStatus] = useState<'PENDING' | 'VERIFIED' | 'FLAGGED'>('PENDING');
+  const [docVerifyNote, setDocVerifyNote] = useState('');
+  const [bagWaiverPcs, setBagWaiverPcs] = useState<number>(0);
+  const [bagWaiverKg, setBagWaiverKg] = useState<number>(0);
+  const [bagWaiverReason, setBagWaiverReason] = useState('');
   
   // Payment state
   const [ticketPrice, setTicketPrice] = useState<number>(0);
@@ -516,6 +523,21 @@ export const CheckInApp = () => {
       setShowFqtvModal(true);
   };
 
+  const openDocVerifyModal = () => {
+      if (!foundPassenger) return;
+      setDocVerifyStatus(foundPassenger.documentVerifyStatus || 'PENDING');
+      setDocVerifyNote(foundPassenger.documentVerifyNote || '');
+      setShowDocVerifyModal(true);
+  };
+
+  const openBagWaiverModal = () => {
+      if (!foundPassenger) return;
+      setBagWaiverPcs(foundPassenger.bagWaiverPcs || 0);
+      setBagWaiverKg(foundPassenger.bagWaiverKg || 0);
+      setBagWaiverReason(foundPassenger.bagWaiverReason || '');
+      setShowBagWaiverModal(true);
+  };
+
   const handleCancelCheckIn = () => {
       if (foundPassenger && foundPassenger.status === 'CHECKED_IN') {
           if (confirm(`Cancel check-in for ${foundPassenger.lastName} ${foundPassenger.firstName} (${foundPassenger.pnr})?`)) {
@@ -598,6 +620,45 @@ export const CheckInApp = () => {
       setShowCommentModal(false);
       alert('COMMENT SAVED');
     }
+  };
+
+  const handleSaveDocVerify = () => {
+    if (!foundPassenger) return;
+    updatePassengerDetails(foundPassenger.pnr, {
+      documentVerifyStatus: docVerifyStatus,
+      documentVerifyNote: docVerifyNote || undefined,
+      documentVerifyDate: new Date().toISOString()
+    });
+    addLog(
+      `Document verification ${docVerifyStatus.toLowerCase()} for ${foundPassenger.lastName} ${foundPassenger.firstName} (${foundPassenger.pnr})${docVerifyNote ? ` - ${docVerifyNote}` : ''}`,
+      'CHECK_IN'
+    );
+    setShowDocVerifyModal(false);
+    alert('DOCUMENT STATUS SAVED');
+  };
+
+  const handleSaveBagWaiver = () => {
+    if (!foundPassenger) return;
+    const pcs = Math.max(0, Number(bagWaiverPcs) || 0);
+    const kg = Math.max(0, Number(bagWaiverKg) || 0);
+    const reason = bagWaiverReason.trim();
+    const hasWaiver = pcs > 0 || kg > 0 || reason.length > 0;
+
+    updatePassengerDetails(foundPassenger.pnr, {
+      bagWaiverPcs: pcs > 0 ? pcs : undefined,
+      bagWaiverKg: kg > 0 ? kg : undefined,
+      bagWaiverReason: reason || undefined
+    });
+
+    addLog(
+      hasWaiver
+        ? `Bag waiver set for ${foundPassenger.lastName} ${foundPassenger.firstName} (${foundPassenger.pnr}) - ${pcs} pcs / ${kg} kg${reason ? ` - ${reason}` : ''}`
+        : `Bag waiver cleared for ${foundPassenger.lastName} ${foundPassenger.firstName} (${foundPassenger.pnr})`,
+      'CHECK_IN'
+    );
+
+    setShowBagWaiverModal(false);
+    alert(hasWaiver ? 'BAG WAIVER SAVED' : 'BAG WAIVER CLEARED');
   };
   
   const handleProcessPayment = async () => {
@@ -843,6 +904,8 @@ export const CheckInApp = () => {
                 <button disabled={!foundPassenger} onClick={() => setShowSbyModal(true)} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Set SBY Status</span></button>
                 <button disabled={!foundPassenger} onClick={() => setShowCommentModal(true)} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Add Comment</span></button>
                 <button disabled={!foundPassenger} onClick={() => setShowLogsModal(true)} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>View Logs</span></button>
+                <button disabled={!foundPassenger} onClick={openDocVerifyModal} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Document Verify</span></button>
+                <button disabled={!foundPassenger} onClick={openBagWaiverModal} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Bag Waiver</span></button>
                 <button disabled={!foundPassenger} onClick={() => setShowPaymentModal(true)} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Price & Payment</span></button>
                 <button disabled={!foundPassenger} onClick={() => setShowServicesModal(true)} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Services</span></button>
                 <div className="h-px bg-gray-300 my-1"></div>
@@ -968,6 +1031,12 @@ export const CheckInApp = () => {
                                   )}
                                   {(seg.passenger as any).upgraded && (
                                     <span className="bg-purple-500 text-purple-900 px-1.5 py-0.5 rounded text-[9px] font-bold border border-purple-600">UPG</span>
+                                  )}
+                                  {seg.passenger.documentVerifyStatus === 'VERIFIED' && (
+                                    <span className="bg-green-500 text-green-900 px-1.5 py-0.5 rounded text-[9px] font-bold border border-green-600">DOC</span>
+                                  )}
+                                  {(seg.passenger.bagWaiverPcs || seg.passenger.bagWaiverKg) && (
+                                    <span className="bg-blue-500 text-blue-900 px-1.5 py-0.5 rounded text-[9px] font-bold border border-blue-600">WVR</span>
                                   )}
                                 </div>
                               ) : ''}
@@ -1478,6 +1547,112 @@ export const CheckInApp = () => {
             </div>
             <div className="flex justify-end mt-4">
               <LegacyButton onClick={() => setShowLogsModal(false)}>Close</LegacyButton>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Document Verify Modal */}
+      {showDocVerifyModal && foundPassenger && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <AlertCircle className="text-green-600" size={24} />
+                Document Verify
+              </h2>
+              <button onClick={() => setShowDocVerifyModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="mb-4">
+              <p className="text-sm text-gray-600 mb-2">Passenger: <strong>{foundPassenger.lastName} {foundPassenger.firstName}</strong></p>
+              <p className="text-xs text-gray-500">PNR: {foundPassenger.pnr}</p>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold mb-1">Status:</label>
+                <select
+                  value={docVerifyStatus}
+                  onChange={(e) => setDocVerifyStatus(e.target.value as 'PENDING' | 'VERIFIED' | 'FLAGGED')}
+                  className="w-full border border-gray-300 rounded p-2 text-sm"
+                >
+                  <option value="PENDING">Pending</option>
+                  <option value="VERIFIED">Verified</option>
+                  <option value="FLAGGED">Flagged</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-bold mb-1">Note:</label>
+                <textarea
+                  value={docVerifyNote}
+                  onChange={(e) => setDocVerifyNote(e.target.value)}
+                  className="w-full border border-gray-300 rounded p-2 text-sm h-24 resize-none"
+                  placeholder="Optional note..."
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end mt-4">
+              <LegacyButton onClick={() => setShowDocVerifyModal(false)}>Cancel</LegacyButton>
+              <LegacyButton primary onClick={handleSaveDocVerify}>Save</LegacyButton>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bag Waiver Modal */}
+      {showBagWaiverModal && foundPassenger && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <Luggage className="text-blue-600" size={24} />
+                Excess Baggage Waiver
+              </h2>
+              <button onClick={() => setShowBagWaiverModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="mb-4">
+              <p className="text-sm text-gray-600 mb-2">Passenger: <strong>{foundPassenger.lastName} {foundPassenger.firstName}</strong></p>
+              <p className="text-xs text-gray-500">PNR: {foundPassenger.pnr}</p>
+            </div>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-bold mb-1">Waived Bags (pcs):</label>
+                  <input
+                    type="number"
+                    value={bagWaiverPcs}
+                    onChange={(e) => setBagWaiverPcs(parseInt(e.target.value, 10) || 0)}
+                    className="w-full border border-gray-300 rounded p-2 text-sm"
+                    min={0}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold mb-1">Waived Weight (kg):</label>
+                  <input
+                    type="number"
+                    value={bagWaiverKg}
+                    onChange={(e) => setBagWaiverKg(parseInt(e.target.value, 10) || 0)}
+                    className="w-full border border-gray-300 rounded p-2 text-sm"
+                    min={0}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-bold mb-1">Reason:</label>
+                <textarea
+                  value={bagWaiverReason}
+                  onChange={(e) => setBagWaiverReason(e.target.value)}
+                  className="w-full border border-gray-300 rounded p-2 text-sm h-24 resize-none"
+                  placeholder="Optional reason..."
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end mt-4">
+              <LegacyButton onClick={() => setShowBagWaiverModal(false)}>Cancel</LegacyButton>
+              <LegacyButton primary onClick={handleSaveBagWaiver}>Save</LegacyButton>
             </div>
           </div>
         </div>
