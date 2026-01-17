@@ -933,10 +933,8 @@ export const useAirportStore = create<AirportStore>()(
         }));
         const typeLabel = passengerType === 'STAFF_DUTY' ? 'STAFF DUTY' : passengerType === 'STAFF_SBY' ? 'STAFF STANDBY' : 'REVENUE';
         get().addLog(`New Booking Created: ${lastName}/${firstName} (${pnr}) [${typeLabel}]`, 'RESERVATIONS', 'SUCCESS');
-        // Sync to database
-        if (get().isDatabaseReady) {
-          get().syncToDatabase().catch(() => {});
-        }
+        // Always attempt to sync (if DB is configured). If not, it will be logged and localStorage is used.
+        get().syncToDatabase().catch(() => {});
       },
 
       boardPassenger: (pnr) => {
@@ -1243,11 +1241,13 @@ export const useAirportStore = create<AirportStore>()(
             complaints: state.complaints,
             emails: state.emails
           });
+          set({ isDatabaseReady: true });
           // Reset flag after a short delay to allow DB to process
           setTimeout(() => setLocalUpdateFlag(false), 1000);
         } catch (error: any) {
           console.error('Error syncing to database:', error);
           setLocalUpdateFlag(false);
+          set({ isDatabaseReady: false });
           get().addLog(`Database sync failed: ${error.message}`, 'SYSTEM', 'ERROR');
         }
       },
