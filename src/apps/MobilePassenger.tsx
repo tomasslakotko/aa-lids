@@ -73,8 +73,14 @@ export const MobilePassengerApp = () => {
   const [bookingFirstName, setBookingFirstName] = useState('');
   const [bookingLastName, setBookingLastName] = useState('');
   const [bookingFlightId, setBookingFlightId] = useState('');
-  const [searchDate, setSearchDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [searchDate, setSearchDate] = useState('');
   const [showResults, setShowResults] = useState(false);
+  const [searchOrigin, setSearchOrigin] = useState('');
+  const [searchDestination, setSearchDestination] = useState('');
+  const [airportPicker, setAirportPicker] = useState<{
+    open: boolean;
+    type: 'origin' | 'destination' | null;
+  }>({ open: false, type: null });
   const [seatSelection, setSeatSelection] = useState('');
   const [bagCount, setBagCount] = useState(0);
   const [paymentAmount, setPaymentAmount] = useState(0);
@@ -84,6 +90,15 @@ export const MobilePassengerApp = () => {
 
   useEffect(() => {
     initializeAirportDatabase();
+  }, []);
+
+  useEffect(() => {
+    // Enable scrolling inside the mobile shell even though body is overflow-hidden
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
   }, []);
 
   useEffect(() => {
@@ -112,10 +127,34 @@ export const MobilePassengerApp = () => {
     ? flights.find((f) => f.id === selectedPassenger.flightId)
     : null;
 
+  const availableDates = useMemo(() => {
+    const dates = flights.map((f) => f.date).filter(Boolean) as string[];
+    return Array.from(new Set(dates)).sort();
+  }, [flights]);
+
   const flightsForDate = useMemo(() => {
-    if (!searchDate) return flights;
-    return flights.filter((f) => !f.date || f.date === searchDate);
-  }, [flights, searchDate]);
+    return flights.filter((f) => {
+      if (searchDate && f.date && f.date !== searchDate) return false;
+      if (searchOrigin && f.origin !== searchOrigin) return false;
+      if (searchDestination && f.destination !== searchDestination) return false;
+      return true;
+    });
+  }, [flights, searchDate, searchOrigin, searchDestination]);
+
+  const airportOptions = useMemo(() => {
+    const all = new Set<string>();
+    flights.forEach((f) => {
+      all.add(f.origin);
+      all.add(f.destination);
+    });
+    return Array.from(all).sort();
+  }, [flights]);
+
+  useEffect(() => {
+    if (!searchDate && availableDates.length > 0) {
+      setSearchDate(availableDates[0]);
+    }
+  }, [availableDates, searchDate]);
 
   useEffect(() => {
     if (selectedPassenger && selectedPassenger.pnr !== selectedPnr) {
@@ -325,7 +364,7 @@ export const MobilePassengerApp = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900 pb-24">
+    <div className="h-screen overflow-y-auto bg-slate-100 text-slate-900 pb-24">
       {renderHeader()}
 
       {error && <div className="mx-4 mt-4 p-3 bg-red-100 text-red-700 rounded-lg">{error}</div>}
@@ -529,26 +568,43 @@ export const MobilePassengerApp = () => {
             </div>
             <div className="grid grid-cols-2 gap-4 text-center">
               <div className="border rounded-xl p-3">
-                <div className="text-3xl font-semibold">
-                  {selectedFlight?.origin || 'DTW'}
-                </div>
+                <button
+                  type="button"
+                  className="text-3xl font-semibold w-full"
+                  onClick={() => setAirportPicker({ open: true, type: 'origin' })}
+                >
+                  {searchOrigin || 'DTW'}
+                </button>
                 <div className="text-xs text-slate-500">Departure</div>
               </div>
               <div className="border rounded-xl p-3">
-                <div className="text-3xl font-semibold">
-                  {selectedFlight?.destination || 'MKE'}
-                </div>
+                <button
+                  type="button"
+                  className="text-3xl font-semibold w-full"
+                  onClick={() => setAirportPicker({ open: true, type: 'destination' })}
+                >
+                  {searchDestination || 'MKE'}
+                </button>
                 <div className="text-xs text-slate-500">Arrival</div>
               </div>
             </div>
             <div className="border rounded-xl p-3 flex items-center justify-between">
               <span className="text-sm text-slate-600">Date</span>
-              <input
-                type="date"
-                className="text-sm"
-                value={searchDate}
-                onChange={(e) => setSearchDate(e.target.value)}
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  className="text-sm"
+                  value={searchDate}
+                  onChange={(e) => setSearchDate(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="text-xs text-slate-500"
+                  onClick={() => setSearchDate('')}
+                >
+                  Any
+                </button>
+              </div>
             </div>
             <div className="border rounded-xl p-3 flex items-center justify-between">
               <span className="text-sm text-slate-600">Passengers</span>
@@ -822,6 +878,50 @@ export const MobilePassengerApp = () => {
                 <div key={note} className="text-sm border rounded-lg p-3 bg-slate-50">
                   Flight update: {note}
                 </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {airportPicker.open && airportPicker.type && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-end">
+          <div className="bg-white w-full rounded-t-2xl p-4 max-h-[70vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-lg font-semibold">
+                Select {airportPicker.type === 'origin' ? 'Departure' : 'Arrival'}
+              </div>
+              <button
+                className="text-sm text-slate-500"
+                onClick={() => setAirportPicker({ open: false, type: null })}
+              >
+                Close
+              </button>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {airportOptions.map((code) => (
+                <button
+                  key={`${airportPicker.type}-${code}`}
+                  className={clsx(
+                    'border rounded-lg py-2 text-center text-sm',
+                    airportPicker.type === 'origin' && searchOrigin === code
+                      ? 'border-blue-500 bg-blue-50'
+                      : '',
+                    airportPicker.type === 'destination' && searchDestination === code
+                      ? 'border-blue-500 bg-blue-50'
+                      : ''
+                  )}
+                  onClick={() => {
+                    if (airportPicker.type === 'origin') {
+                      setSearchOrigin(code);
+                    } else {
+                      setSearchDestination(code);
+                    }
+                    setAirportPicker({ open: false, type: null });
+                  }}
+                >
+                  {code}
+                </button>
               ))}
             </div>
           </div>
