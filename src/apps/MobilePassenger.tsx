@@ -6,12 +6,9 @@ import {
   ClipboardCheck,
   CreditCard,
   Home,
-  Luggage,
-  MapPin,
   Menu,
   Plane,
   UserCircle,
-  Wifi,
   Armchair
 } from 'lucide-react';
 import clsx from 'clsx';
@@ -36,17 +33,6 @@ const NOTIFY_KEY = 'mobile-notifications-v1';
 
 const generatePnr = () => Math.random().toString(36).substring(2, 8).toUpperCase();
 
-const getBoardingTime = (std: string) => {
-  if (!std || !std.includes(':')) return 'TBA';
-  const [h, m] = std.split(':').map(Number);
-  const depTime = new Date();
-  depTime.setHours(h, m, 0, 0);
-  const boardTime = new Date(depTime.getTime() - 30 * 60000);
-  return `${boardTime.getHours().toString().padStart(2, '0')}:${boardTime
-    .getMinutes()
-    .toString()
-    .padStart(2, '0')}`;
-};
 
 export const MobilePassengerApp = () => {
   const flights = useAirportStore((state) => state.flights);
