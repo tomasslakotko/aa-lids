@@ -394,6 +394,8 @@ export const CheckInApp = () => {
   
   // Selection/Acceptance State
   const [selectedPnr, setSelectedPnr] = useState<string | null>(null);
+  const [selectedPassengerForSeat, setSelectedPassengerForSeat] = useState<string | null>(null); // Passenger ID for seat assignment
+  const [selectedPassengerForBoardingPass, setSelectedPassengerForBoardingPass] = useState<string | null>(null); // Passenger ID for boarding pass
   const [bagPcs, setBagPcs] = useState('0');
   const [bagKg, setBagKg] = useState('0');
   const [showFqtvModal, setShowFqtvModal] = useState(false);
@@ -481,6 +483,24 @@ export const CheckInApp = () => {
   const foundFlight = foundPassenger ? flightsForDate.find(f => f.id === foundPassenger.flightId) : null;
   const isFlightClosed = foundFlight ? ['DEPARTED', 'ARRIVED'].includes(foundFlight.status) : false;
   const isPassengerEditable = !!foundPassenger && !isFlightClosed;
+  
+  // Set default selected passenger for seat assignment when PNR changes
+  useEffect(() => {
+    if (foundPassenger && !selectedPassengerForSeat) {
+      setSelectedPassengerForSeat(foundPassenger.id);
+    } else if (!foundPassenger) {
+      setSelectedPassengerForSeat(null);
+    }
+  }, [selectedPnr, foundPassenger?.id]);
+  
+  // Set default selected passenger for boarding pass when PNR changes
+  useEffect(() => {
+    if (foundPassenger && !selectedPassengerForBoardingPass) {
+      setSelectedPassengerForBoardingPass(foundPassenger.id);
+    } else if (!foundPassenger) {
+      setSelectedPassengerForBoardingPass(null);
+    }
+  }, [selectedPnr, foundPassenger?.id]);
   
   // Helper to format seat map
   const occupiedSeats = foundFlight 
@@ -626,33 +646,41 @@ export const CheckInApp = () => {
     }
   };
   
-  const handleSeatChange = async (newSeat: string) => {
+  const handleSeatChange = async (newSeat: string, passengerId?: string) => {
       if (isFlightClosed) {
           alert('FLIGHT CLOSED - EDITING DISABLED');
           return;
       }
-      if (foundPassenger) {
-          const oldSeat = foundPassenger.seat;
-          updatePassengerDetails(foundPassenger.pnr, { seat: newSeat });
+      
+      // Use selected passenger for seat assignment, or fall back to foundPassenger
+      const targetPassengerId = passengerId || selectedPassengerForSeat || foundPassenger?.id;
+      const targetPassenger = targetPassengerId 
+          ? passengers.find(p => p.id === targetPassengerId)
+          : foundPassenger;
+      
+      if (targetPassenger) {
+          const oldSeat = targetPassenger.seat;
+          updatePassengerDetails(targetPassenger.pnr, { seat: newSeat }, targetPassengerId);
           setCurrentScreen('ACCEPTANCE');
           
           // Send email notification about seat change
-          const passengerEmail = emails.find((e: any) => e.pnr === foundPassenger.pnr)?.to || '';
-          if (passengerEmail && foundFlight) {
+          const passengerEmail = emails.find((e: any) => e.pnr === targetPassenger.pnr)?.to || '';
+          const targetFlight = flights.find(f => f.id === targetPassenger.flightId);
+          if (passengerEmail && targetFlight) {
               try {
                   const seatChangeHtml = `
                       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
                           <h2 style="color: #2B4E71;">Seat Assignment Update</h2>
-                          <p>Dear ${foundPassenger.firstName} ${foundPassenger.lastName},</p>
-                          <p>Your seat assignment has been updated for flight ${foundFlight.flightNumber}.</p>
+                          <p>Dear ${targetPassenger.firstName} ${targetPassenger.lastName},</p>
+                          <p>Your seat assignment has been updated for flight ${targetFlight.flightNumber}.</p>
                           <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
                               <p><strong>Previous Seat:</strong> ${oldSeat || 'Not assigned'}</p>
                               <p><strong>New Seat:</strong> ${newSeat}</p>
-                              <p><strong>Flight:</strong> ${foundFlight.flightNumber}</p>
-                              <p><strong>Route:</strong> ${foundFlight.origin} → ${foundFlight.destination}</p>
-                              <p><strong>Date:</strong> ${foundFlight.date ? new Date(foundFlight.date).toLocaleDateString() : 'TBA'}</p>
-                              <p><strong>Departure Time:</strong> ${foundFlight.std}</p>
-                              <p><strong>Gate:</strong> ${foundFlight.gate || 'TBA'}</p>
+                              <p><strong>Flight:</strong> ${targetFlight.flightNumber}</p>
+                              <p><strong>Route:</strong> ${targetFlight.origin} → ${targetFlight.destination}</p>
+                              <p><strong>Date:</strong> ${targetFlight.date ? new Date(targetFlight.date).toLocaleDateString() : 'TBA'}</p>
+                              <p><strong>Departure Time:</strong> ${targetFlight.std}</p>
+                              <p><strong>Gate:</strong> ${targetFlight.gate || 'TBA'}</p>
                           </div>
                           <p>Please check in at the airport with your updated seat assignment.</p>
                           <p>Thank you for choosing airBaltic.</p>
@@ -660,16 +688,16 @@ export const CheckInApp = () => {
                   `;
                   
                   await sendEmailConfirmation(
-                      foundPassenger.pnr,
+                      targetPassenger.pnr,
                       passengerEmail,
-                      `Seat Assignment Update - ${foundFlight.flightNumber}`,
-                      `Your seat has been changed to ${newSeat} for flight ${foundFlight.flightNumber}`,
+                      `Seat Assignment Update - ${targetFlight.flightNumber}`,
+                      `Your seat has been changed to ${newSeat} for flight ${targetFlight.flightNumber}`,
                       seatChangeHtml
                   );
-                  addLog(`Seat change email sent to ${passengerEmail} for ${foundPassenger.pnr}`, 'CHECK_IN', 'SUCCESS');
+                  addLog(`Seat change email sent to ${passengerEmail} for ${targetPassenger.pnr}`, 'CHECK_IN', 'SUCCESS');
               } catch (error) {
                   console.error('Error sending seat change email:', error);
-                  addLog(`Failed to send seat change email for ${foundPassenger.pnr}`, 'CHECK_IN', 'ERROR');
+                  addLog(`Failed to send seat change email for ${targetPassenger.pnr}`, 'CHECK_IN', 'ERROR');
               }
           }
       }
@@ -1143,10 +1171,16 @@ export const CheckInApp = () => {
                       </tr>
                    </thead>
                    <tbody>
-                      {sortedSegments.map((seg, index) => (
+                      {sortedSegments.map((seg, index) => {
+                        // Check if this is a new passenger (different firstName/lastName from previous)
+                        const isNewPassenger = index === 0 || 
+                          sortedSegments[index - 1].passenger.firstName !== seg.passenger.firstName ||
+                          sortedSegments[index - 1].passenger.lastName !== seg.passenger.lastName;
+                        
+                        return (
                         <tr key={seg.passenger.id} className="bg-[#FFF2CC] border-b border-[#D4D0C8]">
                            <td className="px-2 py-1 font-bold whitespace-nowrap">
-                              {index === 0 ? (
+                              {isNewPassenger ? (
                                 <div className="flex items-center gap-2">
                                   <span>{seg.passenger.lastName} {seg.passenger.firstName} {seg.passenger.title || 'MR'}</span>
                                   {seg.passenger.passengerType === 'STAFF_DUTY' && (
@@ -1200,7 +1234,8 @@ export const CheckInApp = () => {
                               )}
                            </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                    </tbody>
                 </table>
              </div>
@@ -1242,34 +1277,73 @@ export const CheckInApp = () => {
 
                     <div className="border-t border-[#D4D0C8] pt-2 relative">
                         <span className="absolute -top-2.5 left-0 bg-[#FFFBE6] px-1 font-bold text-gray-600">Seating</span>
-                        <div className="flex items-center gap-2 mt-2">
-                            <label>Seat Preference:</label>
-                            <LegacyInput width="w-24" readOnly={isFlightClosed} />
-                            <button 
-                                onClick={() => setCurrentScreen('SEAT_MAP')}
-                                className="bg-[#E0E0E0] border border-gray-400 px-2 rounded text-[10px] hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed"
-                                disabled={isFlightClosed}
-                            >
-                                Map
-                            </button>
-                            <button 
-                                onClick={() => {
-                                    if (isFlightClosed) {
-                                        alert('FLIGHT CLOSED - EDITING DISABLED');
-                                        return;
+                        <div className="mt-2 space-y-2">
+                            {/* Passenger selector if multiple passengers */}
+                            {passengerSegments.length > 1 && (
+                                <div className="flex items-center gap-2">
+                                    <label className="text-[10px] font-bold">Select Passenger:</label>
+                                    <select
+                                        value={selectedPassengerForSeat || foundPassenger?.id || ''}
+                                        onChange={(e) => setSelectedPassengerForSeat(e.target.value || null)}
+                                        className="border border-[#7F9DB9] px-2 py-1 text-[10px] bg-white disabled:bg-gray-100 disabled:text-gray-500"
+                                        disabled={isFlightClosed}
+                                    >
+                                        {passengerSegments.map((p) => {
+                                            const pFlight = flightsForDate.find(f => f.id === p.flightId);
+                                            return (
+                                                <option key={p.id} value={p.id}>
+                                                    {p.lastName} {p.firstName} - {pFlight?.flightNumber || 'N/A'} ({p.seat || 'No seat'})
+                                                </option>
+                                            );
+                                        })}
+                                    </select>
+                                </div>
+                            )}
+                            <div className="flex items-center gap-2">
+                                <label>Seat Preference:</label>
+                                <LegacyInput 
+                                    width="w-24" 
+                                    value={selectedPassengerForSeat 
+                                        ? (passengers.find(p => p.id === selectedPassengerForSeat)?.seat || '')
+                                        : (foundPassenger?.seat || '')
                                     }
-                                    if (foundPassenger) {
-                                        if (confirm(`Set seat to SBY (Standby) for ${foundPassenger.lastName} ${foundPassenger.firstName}?`)) {
-                                            handleSeatChange('SBY');
-                                            alert('Seat set to SBY');
+                                    readOnly={isFlightClosed} 
+                                />
+                                <button 
+                                    onClick={() => {
+                                        const targetPassengerId = selectedPassengerForSeat || foundPassenger?.id;
+                                        if (targetPassengerId) {
+                                            setSelectedPassengerForSeat(targetPassengerId);
+                                            setCurrentScreen('SEAT_MAP');
                                         }
-                                    }
-                                }}
-                                className="bg-orange-200 border border-orange-400 px-2 rounded text-[10px] hover:bg-orange-300 disabled:opacity-50 disabled:cursor-not-allowed font-bold text-orange-800"
-                                disabled={isFlightClosed}
-                            >
-                                Set SBY
-                            </button>
+                                    }}
+                                    className="bg-[#E0E0E0] border border-gray-400 px-2 rounded text-[10px] hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed"
+                                    disabled={isFlightClosed}
+                                >
+                                    Map
+                                </button>
+                                <button 
+                                    onClick={() => {
+                                        if (isFlightClosed) {
+                                            alert('FLIGHT CLOSED - EDITING DISABLED');
+                                            return;
+                                        }
+                                        const targetPassenger = selectedPassengerForSeat 
+                                            ? passengers.find(p => p.id === selectedPassengerForSeat)
+                                            : foundPassenger;
+                                        if (targetPassenger) {
+                                            if (confirm(`Set seat to SBY (Standby) for ${targetPassenger.lastName} ${targetPassenger.firstName}?`)) {
+                                                handleSeatChange('SBY', selectedPassengerForSeat || undefined);
+                                                alert('Seat set to SBY');
+                                            }
+                                        }
+                                    }}
+                                    className="bg-orange-200 border border-orange-400 px-2 rounded text-[10px] hover:bg-orange-300 disabled:opacity-50 disabled:cursor-not-allowed font-bold text-orange-800"
+                                    disabled={isFlightClosed}
+                                >
+                                    Set SBY
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1405,12 +1479,26 @@ export const CheckInApp = () => {
         )}
 
         {/* Screen: SEAT MAP */}
-        {currentScreen === 'SEAT_MAP' && foundPassenger && (
+        {currentScreen === 'SEAT_MAP' && foundPassenger && (() => {
+          const targetPassenger = selectedPassengerForSeat 
+            ? passengers.find(p => p.id === selectedPassengerForSeat)
+            : foundPassenger;
+          const targetFlight = targetPassenger 
+            ? flightsForDate.find(f => f.id === targetPassenger.flightId)
+            : foundFlight;
+          const targetOccupiedSeats = targetFlight
+            ? passengersForDate.filter(p => p.flightId === targetFlight.id).map(p => p.seat)
+            : occupiedSeats;
+          
+          return (
           <div className="flex flex-col h-full">
              <div className="bg-[#FFFBE6] border border-[#7F9DB9] mb-2 p-1">
                  <span className="font-bold text-blue-800 mr-4">Select Seats:</span>
-                 <input value={foundPassenger.seat} readOnly className="bg-[#FFF2CC] border border-[#7F9DB9] w-12 text-center font-bold" />
-                 <span className="ml-4 text-gray-600">( {foundFlight?.origin} ➔ {foundFlight?.destination} )</span>
+                 <input value={targetPassenger?.seat || ''} readOnly className="bg-[#FFF2CC] border border-[#7F9DB9] w-12 text-center font-bold" />
+                 <span className="ml-4 text-gray-600">
+                   {targetPassenger ? `${targetPassenger.lastName} ${targetPassenger.firstName}` : ''} 
+                   {targetFlight ? ` ( ${targetFlight.origin} ➔ ${targetFlight.destination} )` : ''}
+                 </span>
                  {isFlightClosed && <span className="ml-4 text-red-600 font-bold text-[10px]">FLIGHT CLOSED - READ ONLY</span>}
              </div>
 
@@ -1432,14 +1520,14 @@ export const CheckInApp = () => {
                                 <div className="flex gap-1">
                                    {['A','B','C'].map(col => {
                                       const seatId = `${row}${col}`;
-                                      const isOccupied = occupiedSeats.includes(seatId) && seatId !== foundPassenger.seat;
-                                      const isSelected = seatId === foundPassenger.seat;
+                                      const isOccupied = targetOccupiedSeats.includes(seatId) && seatId !== targetPassenger?.seat;
+                                      const isSelected = seatId === targetPassenger?.seat;
                                       
                                       return (
                                         <button 
                                           key={seatId}
                                           disabled={isOccupied || isFlightClosed}
-                                          onClick={() => handleSeatChange(seatId)}
+                                          onClick={() => handleSeatChange(seatId, selectedPassengerForSeat || undefined)}
                                           className={clsx(
                                             "w-8 h-10 rounded-t-lg border border-gray-400 text-[10px] flex items-center justify-center font-bold shadow-sm transition-all",
                                             isFlightClosed ? "bg-gray-200 text-gray-500 cursor-not-allowed" :
@@ -1463,14 +1551,14 @@ export const CheckInApp = () => {
                                 <div className="flex gap-1">
                                    {['D','E','F'].map(col => {
                                       const seatId = `${row}${col}`;
-                                      const isOccupied = occupiedSeats.includes(seatId) && seatId !== foundPassenger.seat;
-                                      const isSelected = seatId === foundPassenger.seat;
+                                      const isOccupied = targetOccupiedSeats.includes(seatId) && seatId !== targetPassenger?.seat;
+                                      const isSelected = seatId === targetPassenger?.seat;
                                       
                                       return (
                                         <button 
                                           key={seatId}
                                           disabled={isOccupied || isFlightClosed}
-                                          onClick={() => handleSeatChange(seatId)}
+                                          onClick={() => handleSeatChange(seatId, selectedPassengerForSeat || undefined)}
                                           className={clsx(
                                             "w-8 h-10 rounded-t-lg border border-gray-400 text-[10px] flex items-center justify-center font-bold shadow-sm transition-all",
                                             isFlightClosed ? "bg-gray-200 text-gray-500 cursor-not-allowed" :
@@ -1504,7 +1592,8 @@ export const CheckInApp = () => {
                  </div>
              </div>
           </div>
-        )}
+          );
+        })()}
         </div>
 
         {/* FQTV Modal */}
@@ -1563,31 +1652,134 @@ export const CheckInApp = () => {
                 <div className="flex-1 overflow-auto p-8 bg-gray-600 flex flex-col items-center gap-8">
                     
                     {/* Boarding Pass Section */}
-                    <div className="w-full max-w-3xl">
-                        <h3 className="text-white text-sm font-bold mb-2 uppercase tracking-wider flex items-center gap-2">
-                            <FileText size={14} /> Boarding Pass
-                        </h3>
-                        <BoardingPass passenger={foundPassenger} flight={foundFlight} passengers={passengers} flights={flights} />
-                    </div>
-
-                    {/* Bags Section */}
-                    {foundPassenger.bagCount > 0 && (
+                    {passengerSegments.length > 1 ? (
+                        // Multiple passengers - show all boarding passes or allow selection
+                        <div className="w-full max-w-3xl space-y-8">
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-white text-sm font-bold uppercase tracking-wider flex items-center gap-2">
+                                    <FileText size={14} /> Boarding Passes ({passengerSegments.length})
+                                </h3>
+                                <select
+                                    value={selectedPassengerForBoardingPass || ''}
+                                    onChange={(e) => setSelectedPassengerForBoardingPass(e.target.value || null)}
+                                    className="border border-gray-400 px-3 py-1 text-sm bg-white text-gray-800 rounded"
+                                >
+                                    <option value="">All Passengers</option>
+                                    {passengerSegments.map((p) => {
+                                        const pFlight = flightsForDate.find(f => f.id === p.flightId);
+                                        return (
+                                            <option key={p.id} value={p.id}>
+                                                {p.lastName} {p.firstName} - {pFlight?.flightNumber || 'N/A'}
+                                            </option>
+                                        );
+                                    })}
+                                </select>
+                            </div>
+                            
+                            {/* Show selected passenger or all passengers */}
+                            {selectedPassengerForBoardingPass ? (
+                                // Show selected passenger's boarding pass
+                                (() => {
+                                    const selectedPax = passengerSegments.find(p => p.id === selectedPassengerForBoardingPass);
+                                    const selectedPaxFlight = selectedPax ? flightsForDate.find(f => f.id === selectedPax.flightId) : null;
+                                    return selectedPax && selectedPaxFlight ? (
+                                        <BoardingPass 
+                                            passenger={selectedPax} 
+                                            flight={selectedPaxFlight} 
+                                            passengers={passengers} 
+                                            flights={flights} 
+                                        />
+                                    ) : null;
+                                })()
+                            ) : (
+                                // Show all passengers' boarding passes
+                                passengerSegments.map((p) => {
+                                    const pFlight = flightsForDate.find(f => f.id === p.flightId);
+                                    if (!pFlight) return null;
+                                    return (
+                                        <div key={p.id} className="mb-6">
+                                            <div className="text-white text-xs font-semibold mb-2 uppercase">
+                                                {p.lastName} {p.firstName} - {pFlight.flightNumber}
+                                            </div>
+                                            <BoardingPass 
+                                                passenger={p} 
+                                                flight={pFlight} 
+                                                passengers={passengers} 
+                                                flights={flights} 
+                                            />
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+                    ) : (
+                        // Single passenger - show one boarding pass
                         <div className="w-full max-w-3xl">
                             <h3 className="text-white text-sm font-bold mb-2 uppercase tracking-wider flex items-center gap-2">
-                                <Luggage size={14} /> Baggage Tags ({foundPassenger.bagCount})
+                                <FileText size={14} /> Boarding Pass
                             </h3>
-                            <div className="flex flex-wrap gap-4">
-                                {Array.from({ length: foundPassenger.bagCount }).map((_, i) => (
-                                    <BagTag 
-                                        key={i} 
-                                        passenger={foundPassenger} 
-                                        flight={foundFlight} 
-                                        bagIndex={i}
-                                        weight={customBagWeights[`${foundPassenger.pnr}-${i}`] || 23}
-                                    />
-                                ))}
-                            </div>
+                            <BoardingPass passenger={foundPassenger} flight={foundFlight} passengers={passengers} flights={flights} />
                         </div>
+                    )}
+
+                    {/* Bags Section */}
+                    {passengerSegments.length > 1 ? (
+                        // Multiple passengers - show bags for selected or all passengers
+                        (() => {
+                            const passengersWithBags = selectedPassengerForBoardingPass
+                                ? passengerSegments.filter(p => p.id === selectedPassengerForBoardingPass && p.bagCount > 0)
+                                : passengerSegments.filter(p => p.bagCount > 0);
+                            
+                            if (passengersWithBags.length === 0) return null;
+                            
+                            return (
+                                <div className="w-full max-w-3xl space-y-6">
+                                    {passengersWithBags.map((p) => {
+                                        const pFlight = flightsForDate.find(f => f.id === p.flightId);
+                                        if (!pFlight) return null;
+                                        
+                                        return (
+                                            <div key={p.id}>
+                                                <h3 className="text-white text-sm font-bold mb-2 uppercase tracking-wider flex items-center gap-2">
+                                                    <Luggage size={14} /> {p.lastName} {p.firstName} - Baggage Tags ({p.bagCount})
+                                                </h3>
+                                                <div className="flex flex-wrap gap-4">
+                                                    {Array.from({ length: p.bagCount }).map((_, i) => (
+                                                        <BagTag 
+                                                            key={`${p.id}-${i}`} 
+                                                            passenger={p} 
+                                                            flight={pFlight} 
+                                                            bagIndex={i}
+                                                            weight={customBagWeights[`${p.pnr}-${i}`] || 23}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            );
+                        })()
+                    ) : (
+                        // Single passenger - show bags for one passenger
+                        foundPassenger.bagCount > 0 && (
+                            <div className="w-full max-w-3xl">
+                                <h3 className="text-white text-sm font-bold mb-2 uppercase tracking-wider flex items-center gap-2">
+                                    <Luggage size={14} /> Baggage Tags ({foundPassenger.bagCount})
+                                </h3>
+                                <div className="flex flex-wrap gap-4">
+                                    {Array.from({ length: foundPassenger.bagCount }).map((_, i) => (
+                                        <BagTag 
+                                            key={i} 
+                                            passenger={foundPassenger} 
+                                            flight={foundFlight} 
+                                            bagIndex={i}
+                                            weight={customBagWeights[`${foundPassenger.pnr}-${i}`] || 23}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        )
                     )}
                 </div>
              </div>

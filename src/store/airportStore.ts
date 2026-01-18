@@ -54,6 +54,7 @@ export interface Passenger {
   bagWaiverPcs?: number;
   bagWaiverKg?: number;
   bagWaiverReason?: string;
+  userEmail?: string; // Email of the user who created this booking
 }
 
 export interface LogEntry {
@@ -114,14 +115,14 @@ interface AirportStore {
   addFlight: (flight: Flight) => Promise<void>;
   checkInPassenger: (pnr: string) => Promise<boolean>;
   cancelCheckIn: (pnr: string) => boolean;
-  updatePassengerDetails: (pnr: string, details: Partial<Passenger>) => void;
+  updatePassengerDetails: (pnr: string, details: Partial<Passenger>, passengerId?: string) => void;
   offloadPassenger: (pnr: string) => void;
   deboardPassenger: (pnr: string) => boolean;
   loadBag: (pnr: string) => void;
   unloadBag: (pnr: string) => void;
   addNoRecPassenger: (lastName: string, firstName: string, flightId: string) => void;
   boardPassenger: (pnr: string) => boolean;
-  createBooking: (pnr: string, lastName: string, firstName: string, flightId: string, passengerType?: PassengerType, staffId?: string) => void;
+  createBooking: (pnr: string, lastName: string, firstName: string, flightId: string, passengerType?: PassengerType, staffId?: string, userEmail?: string) => void;
   addLog: (message: string, source: string, type?: LogEntry['type']) => void;
   resetSimulation: () => void;
   
@@ -873,14 +874,21 @@ export const useAirportStore = create<AirportStore>()(
         return true;
       },
 
-      updatePassengerDetails: (pnr, details) => {
-        console.log('updatePassengerDetails called:', { pnr, details });
+      updatePassengerDetails: (pnr, details, passengerId) => {
+        console.log('updatePassengerDetails called:', { pnr, details, passengerId });
         set((state) => {
           const updated = {
             passengers: state.passengers.map(p => {
-              if (p.pnr === pnr) {
+              // If passengerId is provided, update only that specific passenger
+              if (passengerId && p.id === passengerId) {
                 const updated = { ...p, ...details };
-                console.log('Updated passenger:', { pnr, oldComment: p.boardingComment, newComment: updated.boardingComment });
+                console.log('Updated specific passenger:', { passengerId, pnr, details });
+                return updated;
+              }
+              // Otherwise, update all passengers with the same PNR (backward compatibility)
+              if (!passengerId && p.pnr === pnr) {
+                const updated = { ...p, ...details };
+                console.log('Updated passenger by PNR:', { pnr, oldComment: p.boardingComment, newComment: updated.boardingComment });
                 return updated;
               }
               return p;
@@ -888,7 +896,7 @@ export const useAirportStore = create<AirportStore>()(
           };
           return updated;
         });
-        get().addLog(`Passenger details updated for ${pnr}`, 'CHECK-IN', 'INFO');
+        get().addLog(`Passenger details updated for ${pnr}${passengerId ? ` (passenger ${passengerId})` : ''}`, 'CHECK-IN', 'INFO');
         // Sync to database
         if (get().isDatabaseReady) {
           get().syncToDatabase().catch(() => {});
@@ -982,7 +990,7 @@ export const useAirportStore = create<AirportStore>()(
         get().addLog(`NoRec added: ${lastName}/${firstName} (${pnr})`, 'BOARDING', 'WARNING');
       },
 
-      createBooking: (pnr, lastName, firstName, flightId, passengerType = 'REVENUE', staffId) => {
+      createBooking: (pnr, lastName, firstName, flightId, passengerType = 'REVENUE', staffId, userEmail) => {
         set((state) => ({
           passengers: [...state.passengers, {
              id: Math.random().toString(36).substr(2, 9),
@@ -995,7 +1003,8 @@ export const useAirportStore = create<AirportStore>()(
              hasBags: false,
              bagCount: 0,
              passengerType,
-             staffId
+             staffId,
+             userEmail: userEmail || null
           }]
         }));
         const typeLabel = passengerType === 'STAFF_DUTY' ? 'STAFF DUTY' : passengerType === 'STAFF_SBY' ? 'STAFF STANDBY' : 'REVENUE';

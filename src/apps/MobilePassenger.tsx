@@ -80,6 +80,7 @@ export const MobilePassengerApp = () => {
       return '';
     }
   });
+  const [selectedPassengerForBoardingPass, setSelectedPassengerForBoardingPass] = useState<string | null>(null); // Passenger ID for boarding pass
   const [notifications, setNotifications] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem(NOTIFY_KEY);
@@ -87,8 +88,11 @@ export const MobilePassengerApp = () => {
       // Load notifications for selected PNR, or empty array if no PNR selected
       const selectedPnrFromStorage = localStorage.getItem(SELECTED_KEY) || '';
       const normalizedPnr = selectedPnrFromStorage.toUpperCase().trim();
-      return notificationsByPnr[normalizedPnr] || [];
-    } catch {
+      const loadedNotifications = notificationsByPnr[normalizedPnr];
+      // Ensure it's an array
+      return Array.isArray(loadedNotifications) ? loadedNotifications : [];
+    } catch (error) {
+      console.error('Error initializing notifications:', error);
       return [];
     }
   });
@@ -396,8 +400,11 @@ export const MobilePassengerApp = () => {
         const normalizedPnr = selectedPnr.toUpperCase().trim();
         const saved = localStorage.getItem(NOTIFY_KEY);
         const notificationsByPnr: Record<string, string[]> = saved ? JSON.parse(saved) : {};
-        setNotifications(notificationsByPnr[normalizedPnr] || []);
-      } catch {
+        const loadedNotifications = notificationsByPnr[normalizedPnr];
+        // Ensure it's an array
+        setNotifications(Array.isArray(loadedNotifications) ? loadedNotifications : []);
+      } catch (error) {
+        console.error('Error loading notifications:', error);
         setNotifications([]);
       }
     } else {
@@ -412,7 +419,8 @@ export const MobilePassengerApp = () => {
         const normalizedPnr = selectedPnr.toUpperCase().trim();
         const saved = localStorage.getItem(NOTIFY_KEY);
         const notificationsByPnr: Record<string, string[]> = saved ? JSON.parse(saved) : {};
-        notificationsByPnr[normalizedPnr] = notifications;
+        // Ensure notifications is an array before saving
+        notificationsByPnr[normalizedPnr] = Array.isArray(notifications) ? notifications : [];
         localStorage.setItem(NOTIFY_KEY, JSON.stringify(notificationsByPnr));
       } catch (error) {
         console.error('Error saving notifications:', error);
@@ -432,10 +440,47 @@ export const MobilePassengerApp = () => {
     localStorage.setItem(RECENT_SEARCH_KEY, JSON.stringify(recentSearches));
   }, [recentSearches]);
 
-  const tripPassengers = useMemo(
-    () => trips.map((pnr) => passengers.find((p) => p.pnr === pnr)).filter(Boolean),
-    [trips, passengers]
-  );
+  // Sync trips with user's passengers
+  useEffect(() => {
+    const userEmail = currentUser?.email || profile.email || '';
+    if (!userEmail) {
+      setTrips([]);
+      return;
+    }
+    
+    // Get unique PNRs from user's passengers
+    const userPassengers = passengers.filter(p => p.userEmail === userEmail);
+    const userPnrs = [...new Set(userPassengers.map(p => p.pnr))];
+    
+    // Update trips if they differ
+    setTrips(prev => {
+      const prevSet = new Set(prev);
+      const newSet = new Set(userPnrs);
+      
+      // Check if they're different
+      if (prev.length !== userPnrs.length || 
+          !userPnrs.every(pnr => prevSet.has(pnr)) ||
+          !prev.every(pnr => newSet.has(pnr))) {
+        localStorage.setItem(TRIPS_KEY, JSON.stringify(userPnrs));
+        return userPnrs;
+      }
+      return prev;
+    });
+  }, [passengers, currentUser?.email, profile.email]);
+
+  const tripPassengers = useMemo(() => {
+    const userEmail = currentUser?.email || profile.email || '';
+    if (!userEmail) return [];
+    
+    // Filter passengers by user email
+    const userPassengers = passengers.filter(p => p.userEmail === userEmail);
+    
+    // Get unique PNRs from user's passengers
+    const userPnrs = [...new Set(userPassengers.map(p => p.pnr))];
+    
+    // Map to passenger objects
+    return userPnrs.map((pnr) => userPassengers.find((p) => p.pnr === pnr)).filter(Boolean);
+  }, [trips, passengers, currentUser?.email, profile.email]);
 
   const selectedPassenger = useMemo(
     () => passengers.find((p) => p.pnr === selectedPnr) || tripPassengers[0],
@@ -464,6 +509,15 @@ export const MobilePassengerApp = () => {
     tripSegments.find((seg) => seg.flight?.id === selectedPassenger?.flightId) || tripSegments[0];
   const selectedFlight = selectedSegment?.flight || null;
   const finalSegment = tripSegments[tripSegments.length - 1];
+
+  // Set default selected passenger for boarding pass when PNR changes
+  useEffect(() => {
+    if (selectedPassenger && !selectedPassengerForBoardingPass) {
+      setSelectedPassengerForBoardingPass(selectedPassenger.id);
+    } else if (!selectedPassenger) {
+      setSelectedPassengerForBoardingPass(null);
+    }
+  }, [selectedPnr, selectedPassenger?.id]);
 
   const availableDates = useMemo(() => {
     const dates = flights.map((f) => f.date).filter(Boolean) as string[];
@@ -534,8 +588,10 @@ export const MobilePassengerApp = () => {
 
   const addNotification = async (message: string) => {
     setNotifications((prev) => {
-      if (prev[0] === message) return prev;
-      return [message, ...prev].slice(0, 50);
+      // Ensure prev is an array
+      const prevArray = Array.isArray(prev) ? prev : [];
+      if (prevArray[0] === message) return prevArray;
+      return [message, ...prevArray].slice(0, 50);
     });
     
     // Send browser notification if enabled
@@ -711,6 +767,8 @@ export const MobilePassengerApp = () => {
   const handleAddReservation = () => {
     setError('');
     setSuccess('');
+    const userEmail = currentUser?.email || profile.email || '';
+    
     const passenger = passengers.find(
       (p) =>
         p.pnr.toUpperCase() === lookupPnr.toUpperCase() &&
@@ -720,6 +778,13 @@ export const MobilePassengerApp = () => {
       setError('Reservation not found. Check PNR and last name.');
       return;
     }
+    
+    // Check if reservation belongs to current user
+    if (userEmail && passenger.userEmail && passenger.userEmail !== userEmail) {
+      setError('This reservation belongs to another user.');
+      return;
+    }
+    
     if (!trips.includes(passenger.pnr)) {
       setTrips((prev) => [passenger.pnr, ...prev]);
     }
@@ -750,11 +815,14 @@ export const MobilePassengerApp = () => {
     // For employees, use STAFF_SBY passenger type (free standby tickets)
     const passengerType = currentUser?.user_type === 'employee' ? 'STAFF_SBY' : 'REVENUE';
     
+    // Get user email for linking reservations
+    const userEmail = currentUser?.email || profile.email || '';
+    
     // Create booking for each passenger with the same PNR
     validPassengers.forEach(passenger => {
-      createBooking(newPnr, passenger.lastName.toUpperCase(), passenger.firstName.toUpperCase(), bookingFlightId, passengerType);
+      createBooking(newPnr, passenger.lastName.toUpperCase(), passenger.firstName.toUpperCase(), bookingFlightId, passengerType, undefined, userEmail);
       if (bookingConnectionFlightId) {
-        createBooking(newPnr, passenger.lastName.toUpperCase(), passenger.firstName.toUpperCase(), bookingConnectionFlightId, passengerType);
+        createBooking(newPnr, passenger.lastName.toUpperCase(), passenger.firstName.toUpperCase(), bookingConnectionFlightId, passengerType, undefined, userEmail);
       }
     });
     if (profile.email) {
@@ -2368,55 +2436,104 @@ export const MobilePassengerApp = () => {
         </div>
       )}
 
-      {screen === 'boardingPass' && selectedPassenger && (
-        <div className="p-4 space-y-4">
-          <div className="bg-white rounded-2xl shadow-sm p-4">
-            <div className="text-xs text-slate-500">Confirmation # {selectedPassenger.pnr}</div>
-            <div className="text-xl font-semibold mt-2">
-              {selectedPassenger.firstName} {selectedPassenger.lastName}
-            </div>
-            <div className="text-sm text-slate-600 mt-1">
-              {selectedFlight ? `${selectedFlight.origin} → ${selectedFlight.destination}` : 'Flight TBD'}
-            </div>
-            <div className="grid grid-cols-3 gap-2 text-xs text-slate-600 mt-4">
-              <div>
-                <div className="text-slate-400">Flight</div>
-                <div className="font-semibold">{selectedFlight?.flightNumber || '--'}</div>
+      {screen === 'boardingPass' && selectedPassenger && (() => {
+        // Get all passengers with the same PNR
+        const allPassengersForPnr = passengers.filter(p => p.pnr === selectedPassenger.pnr);
+        const hasMultiplePassengers = allPassengersForPnr.length > 1;
+        
+        // Get passengers to display (selected or all)
+        const passengersToShow = selectedPassengerForBoardingPass
+          ? allPassengersForPnr.filter(p => p.id === selectedPassengerForBoardingPass)
+          : allPassengersForPnr;
+        
+        return (
+          <div className="p-4 space-y-4">
+            {/* Passenger selector if multiple passengers */}
+            {hasMultiplePassengers && (
+              <div className="bg-white rounded-2xl shadow-sm p-4">
+                <label className="text-sm font-semibold text-slate-700 mb-2 block">Select Passenger:</label>
+                <select
+                  value={selectedPassengerForBoardingPass || ''}
+                  onChange={(e) => setSelectedPassengerForBoardingPass(e.target.value || null)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white"
+                >
+                  <option value="">All Passengers ({allPassengersForPnr.length})</option>
+                  {allPassengersForPnr.map((p) => {
+                    const pFlight = flights.find(f => f.id === p.flightId);
+                    return (
+                      <option key={p.id} value={p.id}>
+                        {p.firstName} {p.lastName} - {pFlight?.flightNumber || 'N/A'} ({p.seat || 'No seat'})
+                      </option>
+                    );
+                  })}
+                </select>
               </div>
-              <div>
-                <div className="text-slate-400">Seat</div>
-                <div className="font-semibold">{selectedPassenger.seat || '--'}</div>
-              </div>
-              <div>
-                <div className="text-slate-400">Gate</div>
-                <div className="font-semibold">{selectedFlight?.gate || 'TBA'}</div>
-              </div>
-            </div>
-            <div className="text-xs text-slate-500 mt-3">
-              {selectedFlight ? `${formatDate(selectedFlight.date)} · ${formatTime(selectedFlight.std)}` : 'Date TBA'}
-            </div>
-          </div>
+            )}
+            
+            {/* Boarding passes for selected passengers */}
+            {passengersToShow.map((passenger) => {
+              const passengerFlight = flights.find(f => f.id === passenger.flightId);
+              
+              return (
+                <div key={passenger.id} className="space-y-4">
+                  {hasMultiplePassengers && !selectedPassengerForBoardingPass && (
+                    <div className="text-sm font-semibold text-slate-700 px-2">
+                      {passenger.firstName} {passenger.lastName}
+                    </div>
+                  )}
+                  
+                  <div className="bg-white rounded-2xl shadow-sm p-4">
+                    <div className="text-xs text-slate-500">Confirmation # {passenger.pnr}</div>
+                    <div className="text-xl font-semibold mt-2">
+                      {passenger.firstName} {passenger.lastName}
+                    </div>
+                    <div className="text-sm text-slate-600 mt-1">
+                      {passengerFlight ? `${passengerFlight.origin} → ${passengerFlight.destination}` : 'Flight TBD'}
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-xs text-slate-600 mt-4">
+                      <div>
+                        <div className="text-slate-400">Flight</div>
+                        <div className="font-semibold">{passengerFlight?.flightNumber || '--'}</div>
+                      </div>
+                      <div>
+                        <div className="text-slate-400">Seat</div>
+                        <div className="font-semibold">{passenger.seat || '--'}</div>
+                      </div>
+                      <div>
+                        <div className="text-slate-400">Gate</div>
+                        <div className="font-semibold">{passengerFlight?.gate || 'TBA'}</div>
+                      </div>
+                    </div>
+                    <div className="text-xs text-slate-500 mt-3">
+                      {passengerFlight ? `${formatDate(passengerFlight.date)} · ${formatTime(passengerFlight.std)}` : 'Date TBA'}
+                    </div>
+                  </div>
 
-          <div className="bg-white rounded-2xl shadow-sm p-4 flex flex-col items-center gap-4">
-            <QRCode
-              value={JSON.stringify({
-                pnr: selectedPassenger.pnr,
-                name: `${selectedPassenger.lastName}/${selectedPassenger.firstName}`,
-                flight: selectedFlight?.flightNumber || '',
-                seat: selectedPassenger.seat || '',
-                gate: selectedFlight?.gate || '',
-                date: selectedFlight?.date || ''
-              })}
-              size={160}
-              style={{ height: 'auto', maxWidth: '100%', width: '100%' }}
-              viewBox="0 0 160 160"
-            />
-            <button className="w-full bg-blue-600 text-white font-semibold py-2 rounded-lg">
-              Add to Wallet
-            </button>
+                  <div className="bg-white rounded-2xl shadow-sm p-4 flex flex-col items-center gap-4">
+                    <QRCode
+                      value={JSON.stringify({
+                        pnr: passenger.pnr,
+                        name: `${passenger.lastName}/${passenger.firstName}`,
+                        flight: passengerFlight?.flightNumber || '',
+                        seat: passenger.seat || '',
+                        gate: passengerFlight?.gate || '',
+                        date: passengerFlight?.date || '',
+                        passengerId: passenger.id
+                      })}
+                      size={160}
+                      style={{ height: 'auto', maxWidth: '100%', width: '100%' }}
+                      viewBox="0 0 160 160"
+                    />
+                    <button className="w-full bg-blue-600 text-white font-semibold py-2 rounded-lg">
+                      Add to Wallet
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {screen === 'notifications' && (
         <div className="p-4 space-y-4">
@@ -2461,40 +2578,47 @@ export const MobilePassengerApp = () => {
                 <button
                   className={clsx(
                     'h-6 w-12 rounded-full relative transition',
-                    notificationsEnabled && Notification.permission === 'granted' ? 'bg-green-500' : 'bg-slate-200'
+                    notificationsEnabled && 'Notification' in window && Notification.permission === 'granted' ? 'bg-green-500' : 'bg-slate-200'
                   )}
                   onClick={async () => {
                     if ('Notification' in window) {
-                      if (Notification.permission === 'default') {
-                        const permission = await Notification.requestPermission();
-                        if (permission === 'granted') {
-                          setNotificationsEnabled(true);
+                      try {
+                        if (Notification.permission === 'default') {
+                          const permission = await Notification.requestPermission();
+                          if (permission === 'granted') {
+                            setNotificationsEnabled(true);
+                          } else {
+                            setNotificationsEnabled(false);
+                            alert('Notification permission denied. Please enable it in your browser settings.');
+                            return;
+                          }
+                        } else if (Notification.permission === 'granted') {
+                          setNotificationsEnabled((prev) => !prev);
                         } else {
-                          setNotificationsEnabled(false);
-                          alert('Notification permission denied. Please enable it in your browser settings.');
-                          return;
+                          alert('Notifications are blocked. Please enable them in your browser settings.');
                         }
-                      } else if (Notification.permission === 'granted') {
-                        setNotificationsEnabled((prev) => !prev);
-                      } else {
-                        alert('Notifications are blocked. Please enable them in your browser settings.');
+                      } catch (error) {
+                        console.error('Error handling notification permission:', error);
+                        alert('Failed to handle notification permission.');
                       }
+                    } else {
+                      alert('Notifications are not supported in this browser.');
                     }
                   }}
                 >
                   <span
                     className={clsx(
                       'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition',
-                      notificationsEnabled && Notification.permission === 'granted' ? 'left-6' : 'left-1'
+                      notificationsEnabled && 'Notification' in window && Notification.permission === 'granted' ? 'left-6' : 'left-1'
                     )}
                   />
                 </button>
               </div>
             </div>
-            {notifications.length === 0 && <div className="text-sm text-slate-500">No updates yet.</div>}
+            {Array.isArray(notifications) && notifications.length === 0 && <div className="text-sm text-slate-500">No updates yet.</div>}
             <div className="space-y-2">
-              {notifications.map((note) => (
-                <div key={note} className="text-sm border rounded-lg p-3 bg-slate-50">
+              {Array.isArray(notifications) && notifications.map((note, index) => (
+                <div key={`${note}-${index}`} className="text-sm border rounded-lg p-3 bg-slate-50">
                   Flight update: {note}
                 </div>
               ))}

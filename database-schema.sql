@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS passengers (
   security_status TEXT,
   security_note TEXT,
   boarding_comment TEXT,
+  user_email TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -127,6 +128,7 @@ CREATE TABLE IF NOT EXISTS users (
 -- ============================================
 CREATE INDEX IF NOT EXISTS idx_passengers_pnr ON passengers(pnr);
 CREATE INDEX IF NOT EXISTS idx_passengers_flight_id ON passengers(flight_id);
+CREATE INDEX IF NOT EXISTS idx_passengers_user_email ON passengers(user_email);
 CREATE INDEX IF NOT EXISTS idx_flights_status ON flights(status);
 CREATE INDEX IF NOT EXISTS idx_logs_source ON logs(source);
 CREATE INDEX IF NOT EXISTS idx_emails_pnr ON emails(pnr);

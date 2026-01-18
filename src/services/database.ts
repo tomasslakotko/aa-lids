@@ -276,7 +276,8 @@ async function loadPassengers(): Promise<Passenger[]> {
     staffId: row.staff_id,
     securityStatus: row.security_status,
     securityNote: row.security_note,
-    boardingComment: row.boarding_comment || undefined
+    boardingComment: row.boarding_comment || undefined,
+    userEmail: row.user_email || undefined
   })) as Passenger[];
 }
 
@@ -303,7 +304,8 @@ export async function savePassengers(passengers: Passenger[]) {
       staff_id: p.staffId || null,
       security_status: p.securityStatus || null,
       security_note: p.securityNote || null,
-      boarding_comment: p.boardingComment || null
+      boarding_comment: p.boardingComment || null,
+      user_email: p.userEmail || null
     }));
     
     // Use UPSERT to avoid duplicate key errors
