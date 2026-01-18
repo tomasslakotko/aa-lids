@@ -543,13 +543,14 @@ export interface User {
   email: string;
   name?: string;
   skymiles?: string;
+  user_type?: 'passenger' | 'employee';
   created_at?: string;
   updated_at?: string;
   last_login?: string;
 }
 
 // Register a new user
-export async function registerUser(email: string, password: string, name?: string): Promise<User> {
+export async function registerUser(email: string, password: string, name?: string, userType: 'passenger' | 'employee' = 'passenger'): Promise<User> {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     throw new Error('Supabase not configured');
   }
@@ -562,6 +563,7 @@ export async function registerUser(email: string, password: string, name?: strin
     email: email.toLowerCase().trim(),
     password_hash: passwordHash,
     name: name || null,
+    user_type: userType,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   };
@@ -595,6 +597,7 @@ export async function registerUser(email: string, password: string, name?: strin
       email: user.email,
       name: user.name,
       skymiles: user.skymiles,
+      user_type: user.user_type || 'passenger',
       created_at: user.created_at,
       updated_at: user.updated_at,
       last_login: user.last_login
@@ -663,6 +666,7 @@ export async function loginUser(email: string, password: string): Promise<User> 
       email: user.email,
       name: user.name,
       skymiles: user.skymiles,
+      user_type: user.user_type || 'passenger',
       created_at: user.created_at,
       updated_at: user.updated_at,
       last_login: new Date().toISOString()
@@ -707,6 +711,7 @@ export async function getUserByEmail(email: string): Promise<User | null> {
       email: user.email,
       name: user.name,
       skymiles: user.skymiles,
+      user_type: user.user_type || 'passenger',
       created_at: user.created_at,
       updated_at: user.updated_at,
       last_login: user.last_login
@@ -756,6 +761,7 @@ export async function updateUserProfile(userId: string, updates: { name?: string
       email: user.email,
       name: user.name,
       skymiles: user.skymiles,
+      user_type: user.user_type || 'passenger',
       created_at: user.created_at,
       updated_at: user.updated_at,
       last_login: user.last_login

@@ -9,7 +9,9 @@ import {
   Menu,
   Plane,
   UserCircle,
-  Armchair
+  Armchair,
+  Plus,
+  X
 } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import clsx from 'clsx';
@@ -59,6 +61,7 @@ export const MobilePassengerApp = () => {
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginName, setLoginName] = useState('');
+  const [loginUserType, setLoginUserType] = useState<'passenger' | 'employee'>('passenger');
   const [isRegistering, setIsRegistering] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [screen, setScreen] = useState<Screen>('login');
@@ -119,8 +122,9 @@ export const MobilePassengerApp = () => {
 
   const [lookupPnr, setLookupPnr] = useState('');
   const [lookupLastName, setLookupLastName] = useState('');
-  const [bookingFirstName, setBookingFirstName] = useState('');
-  const [bookingLastName, setBookingLastName] = useState('');
+  const [bookingPassengers, setBookingPassengers] = useState<Array<{ firstName: string; lastName: string }>>([
+    { firstName: '', lastName: '' }
+  ]);
   const [bookingFlightId, setBookingFlightId] = useState('');
   const [bookingConnectionFlightId, setBookingConnectionFlightId] = useState('');
   const [searchDate, setSearchDate] = useState('');
@@ -140,8 +144,149 @@ export const MobilePassengerApp = () => {
   const [bagCount, setBagCount] = useState(0);
   const [paymentAmount, setPaymentAmount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<'CARD' | 'CASH'>('CARD');
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardName, setCardName] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvv, setCardCvv] = useState('');
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [cityImages, setCityImages] = useState<Record<string, string>>({});
+  const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // Map of airport codes to city names
+  const cityNameMap: Record<string, string> = {
+    'RIX': 'Riga',
+    'BCN': 'Barcelona',
+    'JFK': 'New York',
+    'LHR': 'London',
+    'CDG': 'Paris',
+    'FRA': 'Frankfurt',
+    'AMS': 'Amsterdam',
+    'MAD': 'Madrid',
+    'FCO': 'Rome',
+    'ATH': 'Athens',
+    'IST': 'Istanbul',
+    'DXB': 'Dubai',
+    'BKK': 'Bangkok',
+    'SIN': 'Singapore',
+    'NRT': 'Tokyo',
+    'LAX': 'Los Angeles',
+    'SFO': 'San Francisco',
+    'MIA': 'Miami',
+    'ORD': 'Chicago',
+    'DFW': 'Dallas',
+    'SEA': 'Seattle',
+    'BOS': 'Boston',
+    'DOH': 'Doha',
+    'DUB': 'Dublin',
+    'CPH': 'Copenhagen',
+    'OSL': 'Oslo',
+    'STO': 'Stockholm',
+    'HEL': 'Helsinki',
+    'ARN': 'Stockholm',
+    'VIE': 'Vienna',
+    'PRG': 'Prague',
+    'BUD': 'Budapest',
+    'WAW': 'Warsaw',
+    'KRK': 'Krakow',
+    'SOF': 'Sofia',
+    'OTP': 'Bucharest',
+    'BUH': 'Bucharest',
+    'BGY': 'Bergamo',
+    'LTN': 'London',
+    'CRL': 'Brussels',
+    'BVA': 'Paris',
+    'FNC': 'Madeira',
+    'LGW': 'London',
+    'LIS': 'Lisbon',
+    'BER': 'Berlin',
+    'MUC': 'Munich',
+    'GOT': 'Gothenburg',
+    'HAM': 'Hamburg',
+    'DUS': 'Dusseldorf',
+    'EWR': 'New York',
+    'IAH': 'Houston',
+    'IAD': 'Washington',
+    'ATL': 'Atlanta',
+    'DTW': 'Detroit'
+  };
+
+  // Function to get city display name with airport code
+  const getCityDisplayName = (cityCode: string, cityName?: string): string => {
+    if (!cityCode) return '';
+    const mappedName = cityName || cityNameMap[cityCode];
+    if (mappedName) {
+      return `${mappedName} (${cityCode})`;
+    }
+    return cityCode;
+  };
+
+  // Pre-defined gradient colors for popular cities (beautiful, free, always works)
+  const cityGradients: Record<string, string> = {
+    'RIX': 'from-blue-600 via-blue-500 to-cyan-500', // Riga - blue
+    'BCN': 'from-orange-500 via-red-500 to-pink-500', // Barcelona - warm
+    'JFK': 'from-purple-600 via-blue-600 to-indigo-600', // New York - vibrant
+    'LHR': 'from-gray-700 via-gray-600 to-gray-500', // London - classic
+    'CDG': 'from-blue-500 via-indigo-500 to-purple-500', // Paris - elegant
+    'FRA': 'from-green-600 via-emerald-500 to-teal-500', // Frankfurt - green
+    'AMS': 'from-orange-400 via-amber-500 to-yellow-500', // Amsterdam - golden
+    'MAD': 'from-red-600 via-rose-500 to-pink-500', // Madrid - red
+    'FCO': 'from-amber-600 via-orange-500 to-red-500', // Rome - warm
+    'ATH': 'from-blue-500 via-cyan-400 to-teal-400', // Athens - blue
+    'IST': 'from-red-700 via-orange-600 to-amber-600', // Istanbul - warm
+    'DXB': 'from-yellow-500 via-orange-500 to-red-500', // Dubai - desert
+    'BKK': 'from-pink-500 via-purple-500 to-indigo-500', // Bangkok - vibrant
+    'SIN': 'from-green-500 via-emerald-400 to-cyan-400', // Singapore - green
+    'NRT': 'from-rose-500 via-pink-500 to-purple-500', // Tokyo - pink
+    'LAX': 'from-blue-400 via-cyan-400 to-teal-400', // Los Angeles - ocean
+    'SFO': 'from-indigo-500 via-purple-500 to-pink-500', // San Francisco - tech
+    'MIA': 'from-cyan-500 via-blue-400 to-teal-400', // Miami - beach
+    'ORD': 'from-blue-600 via-indigo-600 to-purple-600', // Chicago - lake
+    'DFW': 'from-orange-500 via-red-500 to-pink-500', // Dallas - warm
+    'SEA': 'from-green-500 via-emerald-400 to-teal-400', // Seattle - nature
+    'BOS': 'from-blue-700 via-indigo-600 to-purple-600', // Boston - classic
+    'DOH': 'from-amber-600 via-orange-500 to-yellow-500', // Doha - desert
+    'DUB': 'from-green-600 via-emerald-500 to-teal-500', // Dublin - green
+    'CPH': 'from-blue-500 via-cyan-400 to-teal-400', // Copenhagen - nordic
+    'OSL': 'from-blue-600 via-indigo-500 to-purple-500', // Oslo - nordic
+    'HEL': 'from-cyan-500 via-blue-400 to-indigo-400', // Helsinki - nordic
+    'VIE': 'from-purple-600 via-indigo-500 to-blue-500', // Vienna - elegant
+    'PRG': 'from-amber-600 via-orange-500 to-red-500', // Prague - warm
+    'BUD': 'from-red-600 via-rose-500 to-pink-500', // Budapest - warm
+  };
+
+  // Function to get city gradient class
+  const getCityGradient = (cityCode: string): string => {
+    return cityGradients[cityCode] || 'from-slate-700 via-slate-600 to-slate-500';
+  };
+
+  // Function to get city image URL using multiple free services
+  const getCityImageUrl = (cityCode: string, cityName?: string): string => {
+    if (!cityCode || cityCode === 'travel') return '';
+    
+    // Cache the image URL
+    if (cityImages[cityCode]) {
+      return cityImages[cityCode];
+    }
+
+    // Use city name if available, otherwise use mapped name
+    const searchTerm = cityName || cityNameMap[cityCode] || cityCode;
+    
+    // Try multiple free image services (fallback chain)
+    // Option 1: Unsplash Source API (may be rate-limited)
+    // Option 2: Use Picsum with city-specific seed (always works, but random images)
+    // Option 3: Use placeholder with city name (always works, shows text)
+    
+    // For now, try Unsplash first, if it fails, gradient will show
+    // Using simpler format that might work better
+    const imageUrl = `https://source.unsplash.com/800x400/?${encodeURIComponent(searchTerm)}`;
+    
+    // Cache it
+    setCityImages(prev => ({ ...prev, [cityCode]: imageUrl }));
+    
+    return imageUrl;
+  };
 
   useEffect(() => {
     initializeAirportDatabase();
@@ -377,8 +522,8 @@ export const MobilePassengerApp = () => {
     if (parts.length === 0) return;
     const firstName = parts[0];
     const lastName = parts.slice(1).join(' ') || parts[0];
-    setBookingFirstName(firstName.toUpperCase());
-    setBookingLastName(lastName.toUpperCase());
+    // Auto-fill first passenger from profile
+    setBookingPassengers([{ firstName: firstName.toUpperCase(), lastName: lastName.toUpperCase() }]);
   }, [profile.name]);
 
   useEffect(() => {
@@ -525,7 +670,7 @@ export const MobilePassengerApp = () => {
     }
     
     try {
-      const user = await registerUser(loginEmail, loginPassword, loginName || undefined);
+      const user = await registerUser(loginEmail, loginPassword, loginName || undefined, loginUserType);
       setCurrentUser(user);
       setIsLoggedIn(true);
       
@@ -546,6 +691,7 @@ export const MobilePassengerApp = () => {
       setLoginEmail('');
       setLoginPassword('');
       setLoginName('');
+      setLoginUserType('passenger');
       setIsRegistering(false);
       setLoginError('');
     } catch (error: any) {
@@ -587,34 +733,72 @@ export const MobilePassengerApp = () => {
   const handleBookTrip = () => {
     setError('');
     setSuccess('');
-    const firstName = bookingFirstName || profile.name.split(' ')[0] || '';
-    const lastName = bookingLastName || profile.name.split(' ').slice(1).join(' ') || '';
-    if (!firstName || !lastName || !bookingFlightId) {
-      setError('Please fill in all booking fields.');
+    
+    // Validate all passengers have names
+    const validPassengers = bookingPassengers.filter(p => p.firstName.trim() && p.lastName.trim());
+    if (validPassengers.length === 0) {
+      setError('Please add at least one passenger with first and last name.');
       return;
     }
-    const newPnr = generatePnr();
-    createBooking(newPnr, lastName.toUpperCase(), firstName.toUpperCase(), bookingFlightId);
-    if (bookingConnectionFlightId) {
-      createBooking(newPnr, lastName.toUpperCase(), firstName.toUpperCase(), bookingConnectionFlightId);
+    if (!bookingFlightId) {
+      setError('Please select a flight.');
+      return;
     }
+    
+    const newPnr = generatePnr();
+    
+    // For employees, use STAFF_SBY passenger type (free standby tickets)
+    const passengerType = currentUser?.user_type === 'employee' ? 'STAFF_SBY' : 'REVENUE';
+    
+    // Create booking for each passenger with the same PNR
+    validPassengers.forEach(passenger => {
+      createBooking(newPnr, passenger.lastName.toUpperCase(), passenger.firstName.toUpperCase(), bookingFlightId, passengerType);
+      if (bookingConnectionFlightId) {
+        createBooking(newPnr, passenger.lastName.toUpperCase(), passenger.firstName.toUpperCase(), bookingConnectionFlightId, passengerType);
+      }
+    });
     if (profile.email) {
       addEmailContact(newPnr, profile.email);
     }
     if (bookingSelectedFlight) {
-      addLog(
-        `Mobile booking ${newPnr}: ${bookingSelectedFlight.flightNumber} ${fareClass} EUR ${farePricing.total.toFixed(2)}`,
-        'SELF_CHECK_IN'
-      );
+      const passengerCount = validPassengers.length;
+      if (currentUser?.user_type === 'employee') {
+        addLog(
+          `Employee standby booking ${newPnr}: ${bookingSelectedFlight.flightNumber} - FREE (SBY) - ${passengerCount} passenger(s)`,
+          'SELF_CHECK_IN'
+        );
+      } else {
+        const totalPrice = farePricing.total * passengerCount;
+        addLog(
+          `Mobile booking ${newPnr}: ${bookingSelectedFlight.flightNumber} ${fareClass} EUR ${totalPrice.toFixed(2)} - ${passengerCount} passenger(s)`,
+          'SELF_CHECK_IN'
+        );
+      }
     }
     setTrips((prev) => [newPnr, ...prev]);
     setSelectedPnr(newPnr);
-    setBookingFirstName('');
-    setBookingLastName('');
+    setBookingPassengers([{ firstName: '', lastName: '' }]);
     setBookingFlightId('');
-    setSuccess(`Booking created: ${newPnr}`);
-    setShowResults(false);
-    setScreen('trips');
+    
+    const passengerCount = validPassengers.length;
+    if (currentUser?.user_type === 'employee') {
+      // Employees get free standby tickets
+      const successMessage = `Employee standby booking created: ${newPnr} (FREE - SBY) - ${passengerCount} passenger(s)`;
+      setSuccess(successMessage);
+      setShowResults(false);
+      setScreen('trips');
+    } else {
+      // Regular passengers need to pay - multiply price by number of passengers
+      const totalPrice = farePricing.total * passengerCount;
+      setPaymentAmount(totalPrice);
+      const successMessage = `Booking created: ${newPnr} for ${passengerCount} passenger(s). Please complete payment.`;
+      setSuccess(successMessage);
+      setShowResults(false);
+      // selectedPassenger will update automatically via useMemo when selectedPnr changes
+      setTimeout(() => {
+        setScreen('payment');
+      }, 500);
+    }
   };
 
   const handleSync = async () => {
@@ -655,15 +839,110 @@ export const MobilePassengerApp = () => {
     }
   };
 
-  const handlePayment = () => {
-    if (!selectedPassenger || !paymentAmount) return;
-    addLog(
-      `Mobile payment ${paymentAmount.toFixed(2)} EUR via ${paymentMethod} for ${selectedPassenger.pnr}`,
-      'SELF_CHECK_IN'
-    );
-    setPaymentAmount(0);
-    setSuccess('Payment successful.');
-    setScreen('trips');
+  // Format card number with spaces
+  const formatCardNumber = (value: string) => {
+    const v = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
+    const matches = v.match(/\d{4,16}/g);
+    const match = matches && matches[0] || '';
+    const parts = [];
+    for (let i = 0, len = match.length; i < len; i += 4) {
+      parts.push(match.substring(i, i + 4));
+    }
+    if (parts.length) {
+      return parts.join(' ');
+    } else {
+      return v;
+    }
+  };
+
+  // Format expiry date (MM/YY)
+  const formatExpiry = (value: string) => {
+    const v = value.replace(/\D/g, '');
+    if (v.length >= 2) {
+      return v.substring(0, 2) + '/' + v.substring(2, 4);
+    }
+    return v;
+  };
+
+  const handlePayment = async () => {
+    if (!selectedPassenger) {
+      setError('Please select a passenger');
+      return;
+    }
+
+    if (paymentMethod === 'CARD') {
+      // Validate card details
+      if (!cardNumber || cardNumber.replace(/\s/g, '').length < 13) {
+        setError('Please enter a valid card number');
+        return;
+      }
+      if (!cardName || cardName.length < 2) {
+        setError('Please enter cardholder name');
+        return;
+      }
+      if (!cardExpiry || cardExpiry.length !== 5) {
+        setError('Please enter a valid expiry date (MM/YY)');
+        return;
+      }
+      if (!cardCvv || cardCvv.length < 3) {
+        setError('Please enter a valid CVV');
+        return;
+      }
+
+      // Validate expiry date
+      const [month, year] = cardExpiry.split('/');
+      const expiryDate = new Date(2000 + parseInt(year), parseInt(month) - 1);
+      const now = new Date();
+      if (expiryDate < now) {
+        setError('Card has expired');
+        return;
+      }
+
+      setIsProcessingPayment(true);
+      setError('');
+
+      // Simulate payment processing
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Simulate random success/failure (90% success rate for demo)
+      const isSuccess = Math.random() > 0.1;
+
+      setIsProcessingPayment(false);
+
+      if (isSuccess) {
+        const maskedCard = '**** **** **** ' + cardNumber.slice(-4).replace(/\s/g, '');
+        addLog(
+          `Mobile payment ${paymentAmount.toFixed(2)} EUR via CARD (${maskedCard}) for ${selectedPassenger.pnr}`,
+          'SELF_CHECK_IN'
+        );
+        setSuccess('Payment successful!');
+        setCardNumber('');
+        setCardName('');
+        setCardExpiry('');
+        setCardCvv('');
+        setPaymentAmount(0);
+        setTimeout(() => {
+          setScreen('trips');
+        }, 1500);
+      } else {
+        setError('Payment failed. Please try again or use a different card.');
+      }
+    } else {
+      // Cash payment (simpler)
+      if (!paymentAmount || paymentAmount <= 0) {
+        setError('Please enter a valid amount');
+        return;
+      }
+      addLog(
+        `Mobile payment ${paymentAmount.toFixed(2)} EUR via CASH for ${selectedPassenger.pnr}`,
+        'SELF_CHECK_IN'
+      );
+      setPaymentAmount(0);
+      setSuccess('Payment successful.');
+      setTimeout(() => {
+        setScreen('trips');
+      }, 1500);
+    }
   };
 
   const getSeatLayout = (aircraft?: string) => {
@@ -912,16 +1191,52 @@ export const MobilePassengerApp = () => {
               
               <div className="space-y-4">
                 {isRegistering && (
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Full Name</label>
-                    <input
-                      type="text"
-                      value={loginName}
-                      onChange={(e) => setLoginName(e.target.value)}
-                      placeholder="John Doe"
-                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Full Name</label>
+                      <input
+                        type="text"
+                        value={loginName}
+                        onChange={(e) => setLoginName(e.target.value)}
+                        placeholder="John Doe"
+                        className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Account Type</label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setLoginUserType('passenger')}
+                          className={clsx(
+                            'px-4 py-3 border-2 rounded-lg font-semibold transition-colors',
+                            loginUserType === 'passenger'
+                              ? 'border-blue-600 bg-blue-50 text-blue-700'
+                              : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+                          )}
+                        >
+                          Passenger
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setLoginUserType('employee')}
+                          className={clsx(
+                            'px-4 py-3 border-2 rounded-lg font-semibold transition-colors',
+                            loginUserType === 'employee'
+                              ? 'border-blue-600 bg-blue-50 text-blue-700'
+                              : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+                          )}
+                        >
+                          Airline Employee
+                        </button>
+                      </div>
+                      {loginUserType === 'employee' && (
+                        <p className="text-xs text-slate-500 mt-2">
+                          Employees get free standby (SBY) tickets
+                        </p>
+                      )}
+                    </div>
+                  </>
                 )}
                 
                 <div>
@@ -1075,7 +1390,35 @@ export const MobilePassengerApp = () => {
                       setScreen('tripDetail');
                     }}
                   >
-                    <div className="h-40 bg-gradient-to-r from-slate-800 via-slate-700 to-slate-500 relative">
+                    <div className={clsx(
+                      "h-40 relative overflow-hidden bg-gradient-to-r",
+                      getCityGradient(passengerFinalSegment?.flight?.destination || passengerFlight?.destination || '')
+                    )}>
+                      {(() => {
+                        const destCode = passengerFinalSegment?.flight?.destination || passengerFlight?.destination;
+                        const destCity = passengerFinalSegment?.flight?.destinationCity || passengerFlight?.destinationCity;
+                        const imageSrc = destCode ? getCityImageUrl(destCode, destCity) : '';
+                        const hasError = destCode ? imageErrors.has(destCode) : false;
+                        
+                        if (!imageSrc || hasError) {
+                          return null; // Show gradient background
+                        }
+                        
+                        return (
+                          <img
+                            src={imageSrc}
+                            alt={destCity || destCode || 'Destination'}
+                            className="w-full h-full object-cover absolute inset-0"
+                            onError={() => {
+                              if (destCode && !imageErrors.has(destCode)) {
+                                setImageErrors(prev => new Set([...prev, destCode]));
+                              }
+                            }}
+                            loading="lazy"
+                          />
+                        );
+                      })()}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
                       <div className="absolute left-4 bottom-4">
                         <span className="bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-semibold">
                           {passenger.seat === 'SBY' ? 'STANDBY' : 'CONFIRMED'}
@@ -1088,10 +1431,13 @@ export const MobilePassengerApp = () => {
                         <span>Confirmation # {passenger.pnr}</span>
                       </div>
                       <div className="text-2xl font-semibold">
-                        {passengerFinalSegment?.flight?.destination || passengerFlight?.destination || 'Trip details pending'}
+                        {getCityDisplayName(
+                          passengerFinalSegment?.flight?.destination || passengerFlight?.destination || '',
+                          passengerFinalSegment?.flight?.destinationCity || passengerFlight?.destinationCity
+                        ) || 'Trip details pending'}
                       </div>
                       <div className="text-sm text-slate-600">
-                        {passengerFlight ? `${passengerFlight.origin} - ${passengerFlight.destination}` : 'Flight information loading'}
+                        {passengerFlight ? `${getCityDisplayName(passengerFlight.origin, passengerFlight.originCity)} - ${getCityDisplayName(passengerFlight.destination, passengerFlight.destinationCity)}` : 'Flight information loading'}
                       </div>
                       <div className="text-sm text-slate-500">
                         {passengerFlight ? formatDate(passengerFlight.date) : ''}
@@ -1104,31 +1450,6 @@ export const MobilePassengerApp = () => {
           ) : (
             <div className="bg-white rounded-2xl shadow-sm p-6 text-slate-600">
               No Trip. Add a reservation to view.
-            </div>
-          )}
-
-          {selectedPassenger && selectedPassenger.status === 'CHECKED_IN' && (
-            <div className="bg-white rounded-2xl shadow-sm p-4">
-              <div className="text-sm font-semibold text-slate-800 mb-3">Boarding Pass QR Code</div>
-              <div className="flex justify-center bg-white p-3 rounded-lg border-2 border-slate-200">
-                <QRCode
-                  value={JSON.stringify({
-                    pnr: selectedPassenger.pnr,
-                    name: `${selectedPassenger.lastName}/${selectedPassenger.firstName}`,
-                    flight: selectedFlight?.flightNumber || '',
-                    seat: selectedPassenger.seat || '',
-                    gate: selectedFlight?.gate || '',
-                    date: selectedFlight?.date || '',
-                    status: selectedPassenger.status
-                  })}
-                  size={180}
-                  style={{ height: 'auto', maxWidth: '100%', width: '100%' }}
-                  viewBox="0 0 180 180"
-                />
-              </div>
-              <div className="text-xs text-slate-500 text-center mt-2">
-                Show this QR code at the gate for boarding
-              </div>
             </div>
           )}
 
@@ -1523,19 +1844,50 @@ export const MobilePassengerApp = () => {
 
           {bookingSelectedFlight && (
             <div className="bg-white rounded-2xl shadow-sm p-4 space-y-2">
-              <div className="text-sm font-semibold">Price Breakdown</div>
-              <div className="flex justify-between text-sm text-slate-600">
-                <span>Base Fare ({fareClass})</span>
-                <span>€{farePricing.base.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-sm text-slate-600">
-                <span>Taxes & Fees</span>
-                <span>€{farePricing.taxes.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-sm font-semibold text-slate-800 border-t pt-2">
-                <span>Total</span>
-                <span>€{farePricing.total.toFixed(2)}</span>
-              </div>
+              {currentUser?.user_type === 'employee' ? (
+                <>
+                  <div className="text-sm font-semibold">Employee Standby Booking</div>
+                  <div className="flex justify-between text-sm text-slate-600">
+                    <span>Status</span>
+                    <span className="font-semibold text-orange-600">STANDBY (SBY)</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-semibold text-slate-800 border-t pt-2">
+                    <span>Total</span>
+                    <span className="text-green-600 font-bold">FREE</span>
+                  </div>
+                  <div className="text-xs text-slate-500 mt-2">
+                    As an airline employee, you receive free standby tickets. Seat assignment will be confirmed at the gate.
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-sm font-semibold">Price Breakdown</div>
+                  <div className="flex justify-between text-sm text-slate-600">
+                    <span>Base Fare ({fareClass}) per passenger</span>
+                    <span>€{farePricing.base.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm text-slate-600">
+                    <span>Taxes & Fees per passenger</span>
+                    <span>€{farePricing.taxes.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm text-slate-600">
+                    <span>Price per passenger</span>
+                    <span>€{farePricing.total.toFixed(2)}</span>
+                  </div>
+                  {bookingPassengers.filter(p => p.firstName && p.lastName).length > 0 && (
+                    <>
+                      <div className="flex justify-between text-xs text-slate-500 pt-1">
+                        <span>× {bookingPassengers.filter(p => p.firstName && p.lastName).length} passenger(s)</span>
+                        <span></span>
+                      </div>
+                      <div className="flex justify-between text-sm font-semibold text-slate-800 border-t pt-2">
+                        <span>Total</span>
+                        <span>€{(farePricing.total * bookingPassengers.filter(p => p.firstName && p.lastName).length).toFixed(2)}</span>
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
             </div>
           )}
 
@@ -1577,19 +1929,60 @@ export const MobilePassengerApp = () => {
           )}
 
           <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
-            <div className="text-sm font-semibold">Passenger Details</div>
-            <input
-              className="w-full border rounded-lg px-3 py-2 text-sm"
-              placeholder="First name"
-              value={bookingFirstName}
-              onChange={(e) => setBookingFirstName(e.target.value.toUpperCase())}
-            />
-            <input
-              className="w-full border rounded-lg px-3 py-2 text-sm"
-              placeholder="Last name"
-              value={bookingLastName}
-              onChange={(e) => setBookingLastName(e.target.value.toUpperCase())}
-            />
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold">Passenger Details</div>
+              <button
+                type="button"
+                onClick={() => {
+                  setBookingPassengers([...bookingPassengers, { firstName: '', lastName: '' }]);
+                }}
+                className="flex items-center gap-1 text-xs bg-blue-100 text-blue-700 px-3 py-1 rounded-lg font-semibold hover:bg-blue-200"
+              >
+                <Plus className="w-3 h-3" />
+                Add Passenger
+              </button>
+            </div>
+            
+            {bookingPassengers.map((passenger, index) => (
+              <div key={index} className="border rounded-lg p-3 space-y-2 bg-slate-50">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold text-slate-600">Passenger {index + 1}</span>
+                  {bookingPassengers.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBookingPassengers(bookingPassengers.filter((_, i) => i !== index));
+                      }}
+                      className="flex items-center gap-1 text-xs text-red-600 hover:text-red-700"
+                    >
+                      <X className="w-3 h-3" />
+                      Remove
+                    </button>
+                  )}
+                </div>
+                <input
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                  placeholder="First name"
+                  value={passenger.firstName}
+                  onChange={(e) => {
+                    const updated = [...bookingPassengers];
+                    updated[index].firstName = e.target.value.toUpperCase();
+                    setBookingPassengers(updated);
+                  }}
+                />
+                <input
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                  placeholder="Last name"
+                  value={passenger.lastName}
+                  onChange={(e) => {
+                    const updated = [...bookingPassengers];
+                    updated[index].lastName = e.target.value.toUpperCase();
+                    setBookingPassengers(updated);
+                  }}
+                />
+              </div>
+            ))}
+            
             <div className="text-xs text-slate-500">
               Selected flight: {bookingFlightId ? bookingFlightId : 'none'}
             </div>
@@ -1597,7 +1990,7 @@ export const MobilePassengerApp = () => {
               className="w-full bg-blue-600 text-white font-semibold py-2 rounded-lg"
               onClick={handleBookTrip}
             >
-              Confirm Booking
+              Confirm Booking ({bookingPassengers.filter(p => p.firstName && p.lastName).length} passenger{bookingPassengers.filter(p => p.firstName && p.lastName).length !== 1 ? 's' : ''})
             </button>
           </div>
         </div>
@@ -1610,7 +2003,14 @@ export const MobilePassengerApp = () => {
               {currentUser?.name || profile.name || `${selectedPassenger?.firstName || 'User'} ${selectedPassenger?.lastName || ''}`}
             </div>
             <div className="text-sm text-indigo-200">
-              SkyMiles Member {currentUser?.skymiles || profile.skymiles ? `· #${currentUser?.skymiles || profile.skymiles}` : ''}
+              {currentUser?.user_type === 'employee' ? (
+                <span className="inline-flex items-center gap-2">
+                  <span className="bg-orange-500 text-white px-2 py-1 rounded text-xs font-semibold">AIRLINE EMPLOYEE</span>
+                  {currentUser?.skymiles || profile.skymiles ? `· SkyMiles #${currentUser?.skymiles || profile.skymiles}` : ''}
+                </span>
+              ) : (
+                `SkyMiles Member ${currentUser?.skymiles || profile.skymiles ? `· #${currentUser?.skymiles || profile.skymiles}` : ''}`
+              )}
             </div>
             <div className="text-3xl font-semibold mt-2">0</div>
             <div className="text-xs text-indigo-200">Miles Available</div>
@@ -1831,27 +2231,139 @@ export const MobilePassengerApp = () => {
         <div className="p-4 space-y-4">
           <div className="bg-white rounded-xl shadow-sm p-4">
             <h2 className="font-semibold mb-3">Payment</h2>
-            <input
-              type="number"
-              className="w-full border rounded-lg px-3 py-2"
-              placeholder="Amount"
-              value={paymentAmount || ''}
-              onChange={(e) => setPaymentAmount(parseFloat(e.target.value) || 0)}
-            />
-            <select
-              className="w-full border rounded-lg px-3 py-2 mt-3"
-              value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value as 'CARD' | 'CASH')}
-            >
-              <option value="CARD">Card</option>
-              <option value="CASH">Cash</option>
-            </select>
+            
+            {/* Amount */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-slate-700 mb-2">Amount (EUR)</label>
+              <input
+                type="number"
+                step="0.01"
+                className="w-full border rounded-lg px-3 py-2"
+                placeholder="0.00"
+                value={paymentAmount || ''}
+                onChange={(e) => setPaymentAmount(parseFloat(e.target.value) || 0)}
+                disabled={isProcessingPayment}
+              />
+            </div>
+
+            {/* Payment Method */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-slate-700 mb-2">Payment Method</label>
+              <select
+                className="w-full border rounded-lg px-3 py-2"
+                value={paymentMethod}
+                onChange={(e) => {
+                  setPaymentMethod(e.target.value as 'CARD' | 'CASH');
+                  setError('');
+                }}
+                disabled={isProcessingPayment}
+              >
+                <option value="CARD">Credit/Debit Card</option>
+                <option value="CASH">Cash</option>
+              </select>
+            </div>
+
+            {/* Card Details (only for CARD payment) */}
+            {paymentMethod === 'CARD' && (
+              <div className="space-y-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Card Number</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded-lg px-3 py-2"
+                    placeholder="1234 5678 9012 3456"
+                    value={cardNumber}
+                    onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
+                    maxLength={19}
+                    disabled={isProcessingPayment}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Cardholder Name</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded-lg px-3 py-2"
+                    placeholder="JOHN DOE"
+                    value={cardName}
+                    onChange={(e) => setCardName(e.target.value.toUpperCase())}
+                    disabled={isProcessingPayment}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Expiry Date</label>
+                    <input
+                      type="text"
+                      className="w-full border rounded-lg px-3 py-2"
+                      placeholder="MM/YY"
+                      value={cardExpiry}
+                      onChange={(e) => {
+                        const formatted = formatExpiry(e.target.value);
+                        if (formatted.length <= 5) {
+                          setCardExpiry(formatted);
+                        }
+                      }}
+                      maxLength={5}
+                      disabled={isProcessingPayment}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">CVV</label>
+                    <input
+                      type="text"
+                      className="w-full border rounded-lg px-3 py-2"
+                      placeholder="123"
+                      value={cardCvv}
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/\D/g, '');
+                        if (v.length <= 4) {
+                          setCardCvv(v);
+                        }
+                      }}
+                      maxLength={4}
+                      disabled={isProcessingPayment}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Error Message */}
+            {error && (
+              <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                {error}
+              </div>
+            )}
+
+            {/* Success Message */}
+            {success && (
+              <div className="mb-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm">
+                {success}
+              </div>
+            )}
+
+            {/* Payment Button */}
             <button
-              className="w-full mt-4 bg-blue-600 text-white rounded-lg py-2"
+              className="w-full mt-4 bg-blue-600 text-white rounded-lg py-3 font-semibold disabled:bg-slate-400 disabled:cursor-not-allowed"
               onClick={handlePayment}
+              disabled={isProcessingPayment || !paymentAmount || paymentAmount <= 0}
             >
-              Pay
+              {isProcessingPayment ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="animate-spin">⏳</span>
+                  Processing...
+                </span>
+              ) : (
+                `Pay €${paymentAmount.toFixed(2)}`
+              )}
             </button>
+
+            {/* Security Note */}
+            {paymentMethod === 'CARD' && (
+              <p className="text-xs text-slate-500 mt-3 text-center">
+                🔒 Your payment is secure. This is a demo simulation.
+              </p>
+            )}
           </div>
         </div>
       )}
