@@ -272,13 +272,21 @@ export const MobilePassengerApp = () => {
     }
   }, [selectedPassenger, selectedPnr]);
 
-  const addNotification = (message: string) => {
+  const addNotification = async (message: string) => {
     setNotifications((prev) => {
       if (prev[0] === message) return prev;
       return [message, ...prev].slice(0, 50);
     });
-    if (notificationsEnabled && 'Notification' in window && Notification.permission === 'granted') {
-      new Notification('Flight Update', { body: message });
+    if (notificationsEnabled && 'Notification' in window) {
+      if (Notification.permission === 'default') {
+        // Permission not yet requested, ask for it
+        const permission = await Notification.requestPermission();
+        if (permission === 'granted') {
+          new Notification('Flight Update', { body: message });
+        }
+      } else if (Notification.permission === 'granted') {
+        new Notification('Flight Update', { body: message });
+      }
     }
   };
 

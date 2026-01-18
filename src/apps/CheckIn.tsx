@@ -1196,6 +1196,24 @@ export const CheckInApp = () => {
                             >
                                 Map
                             </button>
+                            <button 
+                                onClick={() => {
+                                    if (isFlightClosed) {
+                                        alert('FLIGHT CLOSED - EDITING DISABLED');
+                                        return;
+                                    }
+                                    if (foundPassenger) {
+                                        if (confirm(`Set seat to SBY (Standby) for ${foundPassenger.lastName} ${foundPassenger.firstName}?`)) {
+                                            handleSeatChange('SBY');
+                                            alert('Seat set to SBY');
+                                        }
+                                    }
+                                }}
+                                className="bg-orange-200 border border-orange-400 px-2 rounded text-[10px] hover:bg-orange-300 disabled:opacity-50 disabled:cursor-not-allowed font-bold text-orange-800"
+                                disabled={isFlightClosed}
+                            >
+                                Set SBY
+                            </button>
                         </div>
                     </div>
                 </div>

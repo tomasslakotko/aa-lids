@@ -56,7 +56,7 @@ export const BoardingApp = () => {
   const selectedFlight = flights.find(f => f.id === selectedFlightId);
   
   // Helper function to add notification for passenger
-  const addPassengerNotification = (_pnr: string, message: string) => {
+  const addPassengerNotification = async (_pnr: string, message: string) => {
     try {
       const NOTIFY_KEY = 'mobile-notifications-v1';
       const saved = localStorage.getItem(NOTIFY_KEY);
@@ -68,9 +68,17 @@ export const BoardingApp = () => {
         notifications.unshift(fullMessage);
         localStorage.setItem(NOTIFY_KEY, JSON.stringify(notifications.slice(0, 50)));
       }
-      // Try to send browser notification if permission granted
-      if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('Flight Update', { body: message });
+      // Request permission and send browser notification
+      if ('Notification' in window) {
+        if (Notification.permission === 'default') {
+          // Permission not yet requested, ask for it
+          const permission = await Notification.requestPermission();
+          if (permission === 'granted') {
+            new Notification('Flight Update', { body: message });
+          }
+        } else if (Notification.permission === 'granted') {
+          new Notification('Flight Update', { body: message });
+        }
       }
     } catch (error) {
       console.error('Error adding notification:', error);
