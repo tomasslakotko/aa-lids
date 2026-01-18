@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bell,
   BookOpen,
@@ -11,6 +11,7 @@ import {
   UserCircle,
   Armchair
 } from 'lucide-react';
+import QRCode from 'react-qr-code';
 import clsx from 'clsx';
 import { useAirportStore } from '../store/airportStore';
 import { initializeAirportDatabase } from '../store/airportStore';
@@ -20,6 +21,7 @@ type Screen =
   | 'book'
   | 'trips'
   | 'tripDetail'
+  | 'boardingPass'
   | 'account'
   | 'more'
   | 'add'
@@ -31,6 +33,8 @@ type Screen =
 const TRIPS_KEY = 'mobile-trips-v1';
 const SELECTED_KEY = 'mobile-selected-pnr-v1';
 const NOTIFY_KEY = 'mobile-notifications-v1';
+const NOTIFY_ENABLED_KEY = 'mobile-notifications-enabled-v1';
+const PROFILE_KEY = 'mobile-profile-v1';
 
 const generatePnr = () => Math.random().toString(36).substring(2, 8).toUpperCase();
 
@@ -42,6 +46,8 @@ export const MobilePassengerApp = () => {
   const checkInPassenger = useAirportStore((state) => state.checkInPassenger);
   const createBooking = useAirportStore((state) => state.createBooking);
   const addLog = useAirportStore((state) => state.addLog);
+  const loadFromDatabase = useAirportStore((state) => state.loadFromDatabase);
+  const isDatabaseReady = useAirportStore((state) => state.isDatabaseReady);
 
   const [screen, setScreen] = useState<Screen>('explore');
   const [trips, setTrips] = useState<string[]>(() => {
@@ -67,6 +73,23 @@ export const MobilePassengerApp = () => {
       return [];
     }
   });
+  const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem(NOTIFY_ENABLED_KEY);
+      return saved ? JSON.parse(saved) : false;
+    } catch {
+      return false;
+    }
+  });
+  const [profile, setProfile] = useState<{ name: string; email: string; skymiles: string }>(() => {
+    try {
+      const saved = localStorage.getItem(PROFILE_KEY);
+      return saved ? JSON.parse(saved) : { name: '', email: '', skymiles: '' };
+    } catch {
+      return { name: '', email: '', skymiles: '' };
+    }
+  });
+  const lastFlightRef = useRef<{ status?: string; gate?: string } | null>(null);
 
   const [lookupPnr, setLookupPnr] = useState('');
   const [lookupLastName, setLookupLastName] = useState('');
@@ -77,10 +100,13 @@ export const MobilePassengerApp = () => {
   const [showResults, setShowResults] = useState(false);
   const [searchOrigin, setSearchOrigin] = useState('');
   const [searchDestination, setSearchDestination] = useState('');
+  const [fareClass, setFareClass] = useState<'BASIC' | 'MAIN' | 'COMFORT' | 'BUSINESS'>('MAIN');
   const [airportPicker, setAirportPicker] = useState<{
     open: boolean;
     type: 'origin' | 'destination' | null;
   }>({ open: false, type: null });
+  const [syncState, setSyncState] = useState<'IDLE' | 'SYNCING' | 'ERROR'>('IDLE');
+  const [lastSync, setLastSync] = useState<string>('');
   const [seatSelection, setSeatSelection] = useState('');
   const [bagCount, setBagCount] = useState(0);
   const [paymentAmount, setPaymentAmount] = useState(0);
@@ -91,6 +117,12 @@ export const MobilePassengerApp = () => {
   useEffect(() => {
     initializeAirportDatabase();
   }, []);
+
+  useEffect(() => {
+    if (isDatabaseReady) {
+      setLastSync(new Date().toLocaleString());
+    }
+  }, [isDatabaseReady]);
 
   useEffect(() => {
     // Enable scrolling inside the mobile shell even though body is overflow-hidden
@@ -112,6 +144,14 @@ export const MobilePassengerApp = () => {
   useEffect(() => {
     localStorage.setItem(NOTIFY_KEY, JSON.stringify(notifications));
   }, [notifications]);
+
+  useEffect(() => {
+    localStorage.setItem(NOTIFY_ENABLED_KEY, JSON.stringify(notificationsEnabled));
+  }, [notificationsEnabled]);
+
+  useEffect(() => {
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+  }, [profile]);
 
   const tripPassengers = useMemo(
     () => trips.map((pnr) => passengers.find((p) => p.pnr === pnr)).filter(Boolean),
@@ -160,6 +200,10 @@ export const MobilePassengerApp = () => {
     });
   }, [flights, searchDate, searchOrigin, searchDestination]);
 
+  const bookingSelectedFlight = useMemo(() => {
+    return bookingFlightId ? flights.find((f) => f.id === bookingFlightId) || null : null;
+  }, [bookingFlightId, flights]);
+
   const airportOptions = useMemo(() => {
     const all = new Set<string>();
     flights.forEach((f) => {
@@ -181,12 +225,35 @@ export const MobilePassengerApp = () => {
     }
   }, [selectedPassenger, selectedPnr]);
 
+  const addNotification = (message: string) => {
+    setNotifications((prev) => {
+      if (prev[0] === message) return prev;
+      return [message, ...prev].slice(0, 50);
+    });
+    if (notificationsEnabled && 'Notification' in window && Notification.permission === 'granted') {
+      new Notification('Flight Update', { body: message });
+    }
+  };
+
   useEffect(() => {
     if (!selectedPassenger || !selectedFlight) return;
-    const statusKey = `${selectedFlight.id}:${selectedFlight.status}`;
-    if (['BOARDING', 'DEPARTED', 'ARRIVED'].includes(selectedFlight.status)) {
-      setNotifications((prev) => (prev.includes(statusKey) ? prev : [statusKey, ...prev]));
+    const prev = lastFlightRef.current;
+    if (prev) {
+      if (prev.status && prev.status !== selectedFlight.status) {
+        addNotification(
+          `${new Date().toLocaleTimeString()} · Status ${prev.status} → ${selectedFlight.status}`
+        );
+      }
+      if (prev.gate && prev.gate !== selectedFlight.gate) {
+        addNotification(
+          `${new Date().toLocaleTimeString()} · Gate changed ${prev.gate} → ${selectedFlight.gate || 'TBA'}`
+        );
+      }
     }
+    if (['BOARDING', 'DEPARTED', 'ARRIVED'].includes(selectedFlight.status)) {
+      addNotification(`${new Date().toLocaleTimeString()} · ${selectedFlight.status} for ${selectedFlight.flightNumber}`);
+    }
+    lastFlightRef.current = { status: selectedFlight.status, gate: selectedFlight.gate };
   }, [selectedPassenger, selectedFlight]);
 
   const handleAddReservation = () => {
@@ -220,6 +287,12 @@ export const MobilePassengerApp = () => {
     }
     const newPnr = generatePnr();
     createBooking(newPnr, bookingLastName.toUpperCase(), bookingFirstName.toUpperCase(), bookingFlightId);
+    if (bookingSelectedFlight) {
+      addLog(
+        `Mobile booking ${newPnr}: ${bookingSelectedFlight.flightNumber} ${fareClass} EUR ${farePricing.total.toFixed(2)}`,
+        'SELF_CHECK_IN'
+      );
+    }
     setTrips((prev) => [newPnr, ...prev]);
     setSelectedPnr(newPnr);
     setBookingFirstName('');
@@ -228,6 +301,17 @@ export const MobilePassengerApp = () => {
     setSuccess(`Booking created: ${newPnr}`);
     setShowResults(false);
     setScreen('trips');
+  };
+
+  const handleSync = async () => {
+    try {
+      setSyncState('SYNCING');
+      await loadFromDatabase();
+      setLastSync(new Date().toLocaleString());
+      setSyncState('IDLE');
+    } catch {
+      setSyncState('ERROR');
+    }
   };
 
   const handleSeatSave = () => {
@@ -268,10 +352,26 @@ export const MobilePassengerApp = () => {
     setScreen('trips');
   };
 
+  const getSeatLayout = (aircraft?: string) => {
+    if (!aircraft) return { rows: 30, seats: ['A', 'B', 'C', 'D', 'E', 'F'] };
+    const upper = aircraft.toUpperCase();
+    if (upper.includes('A220') || upper.includes('BCS3')) {
+      return { rows: 25, seats: ['A', 'B', 'C', 'D', 'F'] };
+    }
+    if (upper.includes('A319') || upper.includes('A320') || upper.includes('A321')) {
+      return { rows: 30, seats: ['A', 'B', 'C', 'D', 'E', 'F'] };
+    }
+    if (upper.includes('A330') || upper.includes('A350') || upper.includes('B777') || upper.includes('B787')) {
+      return { rows: 40, seats: ['A', 'B', 'C', 'D', 'E', 'F'] };
+    }
+    return { rows: 30, seats: ['A', 'B', 'C', 'D', 'E', 'F'] };
+  };
+
   const seatMap = useMemo(() => {
     if (!selectedFlight) return [];
-    return Array.from({ length: 30 }, (_, row) =>
-      ['A', 'B', 'C', 'D', 'E', 'F'].map((seat) => `${row + 1}${seat}`)
+    const layout = getSeatLayout(selectedFlight.aircraft);
+    return Array.from({ length: layout.rows }, (_, row) =>
+      layout.seats.map((seat) => `${row + 1}${seat}`)
     ).flat();
   }, [selectedFlight]);
 
@@ -297,6 +397,32 @@ export const MobilePassengerApp = () => {
     if (!time) return 'TBA';
     return time;
   };
+
+  const estimateDurationMinutes = (flight?: typeof selectedFlight) => {
+    if (!flight) return 120;
+    const longHaul = new Set(['JFK', 'LAX', 'BKK', 'DOH', 'DXB', 'SIN', 'NRT', 'ICN', 'SFO', 'SEA', 'ORD']);
+    return longHaul.has(flight.destination) ? 480 : 120;
+  };
+
+  const toDateTime = (flight?: typeof selectedFlight) => {
+    if (!flight?.date || !flight?.std) return null;
+    const [y, m, d] = flight.date.split('-').map(Number);
+    const [hh, mm] = flight.std.split(':').map(Number);
+    const dt = new Date(y, m - 1, d, hh, mm, 0);
+    return dt;
+  };
+
+  const farePricing = useMemo(() => {
+    if (!bookingSelectedFlight) return { base: 0, taxes: 0, total: 0 };
+    const seed = bookingSelectedFlight.flightNumber
+      .split('')
+      .reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+    const base = 90 + (seed % 160);
+    const multiplier = fareClass === 'BASIC' ? 0.85 : fareClass === 'MAIN' ? 1 : fareClass === 'COMFORT' ? 1.35 : 2.1;
+    const baseFare = Math.round(base * multiplier);
+    const taxes = Math.round(baseFare * 0.23);
+    return { base: baseFare, taxes, total: baseFare + taxes };
+  }, [bookingSelectedFlight, fareClass]);
 
   const navItems = [
     { id: 'explore', label: 'Explore', icon: Home },
@@ -336,14 +462,15 @@ export const MobilePassengerApp = () => {
       );
     }
 
-    if (['add', 'seat', 'checkin', 'payment', 'notifications', 'tripDetail'].includes(screen)) {
+    if (['add', 'seat', 'checkin', 'payment', 'notifications', 'tripDetail', 'boardingPass'].includes(screen)) {
       const titleMap: Record<string, string> = {
         add: 'Find My Trip',
         seat: 'Seat Selection',
         checkin: 'Check In',
         payment: 'Payment',
         notifications: 'Notifications',
-        tripDetail: selectedFlight ? `${selectedFlight.origin} - ${selectedFlight.destination}` : 'Trip'
+        tripDetail: selectedFlight ? `${selectedFlight.origin} - ${selectedFlight.destination}` : 'Trip',
+        boardingPass: 'Boarding Pass'
       };
       return (
         <div className="bg-gradient-to-b from-slate-900 to-slate-800 text-white px-4 pt-5 pb-4">
@@ -420,7 +547,19 @@ export const MobilePassengerApp = () => {
 
       {screen === 'trips' && (
         <div className="p-4 space-y-4">
-          <div className="text-lg font-semibold text-slate-800">My Flights ({tripPassengers.length})</div>
+          <div className="flex items-center justify-between">
+            <div className="text-lg font-semibold text-slate-800">My Flights ({tripPassengers.length})</div>
+            <button
+              className="text-xs text-blue-600"
+              onClick={handleSync}
+              disabled={syncState === 'SYNCING'}
+            >
+              {syncState === 'SYNCING' ? 'Syncing…' : 'Sync Now'}
+            </button>
+          </div>
+          <div className="text-xs text-slate-500">
+            Status: {isDatabaseReady ? 'Synced' : 'Offline'}{lastSync ? ` · Last sync ${lastSync}` : ''}
+          </div>
           {selectedPassenger ? (
             <button
               className="bg-white rounded-2xl shadow-sm overflow-hidden text-left"
@@ -529,8 +668,22 @@ export const MobilePassengerApp = () => {
                     <div className="text-sm text-slate-600">
                       {formatDate(seg.flight?.date)} · {formatTime(seg.flight?.std)}
                     </div>
+                    <div className="text-xs text-slate-500 mt-1">
+                      Aircraft: {seg.flight?.aircraft || 'TBA'} · Duration {Math.round(estimateDurationMinutes(seg.flight) / 60)}h
+                    </div>
                     {index < tripSegments.length - 1 && (
-                      <div className="mt-2 text-xs text-slate-500">Connection</div>
+                      <div className="mt-2 text-xs text-slate-500">
+                        {(() => {
+                          const currentDep = toDateTime(seg.flight);
+                          const nextDep = toDateTime(tripSegments[index + 1].flight);
+                          if (!currentDep || !nextDep) return 'Connection';
+                          const arrival = new Date(currentDep.getTime() + estimateDurationMinutes(seg.flight) * 60000);
+                          const diff = Math.max(0, Math.round((nextDep.getTime() - arrival.getTime()) / 60000));
+                          const hours = Math.floor(diff / 60);
+                          const mins = diff % 60;
+                          return `Layover ${hours}h ${mins}m`;
+                        })()}
+                      </div>
                     )}
                   </div>
                 ))}
@@ -540,6 +693,7 @@ export const MobilePassengerApp = () => {
 
           <div className="space-y-3">
             {[
+              { label: 'Boarding Pass', action: () => setScreen('boardingPass') },
               { label: 'Seat Selection', action: () => setScreen('seat') },
               { label: 'Change or Add Flights', action: () => setScreen('book') },
               { label: 'Need to Cancel?', action: () => setScreen('more') }
@@ -689,6 +843,24 @@ export const MobilePassengerApp = () => {
             </select>
           </div>
 
+          <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
+            <div className="text-sm font-semibold">Fare Class</div>
+            <div className="grid grid-cols-4 gap-2 text-xs">
+              {['BASIC', 'MAIN', 'COMFORT', 'BUSINESS'].map((label) => (
+                <button
+                  key={label}
+                  className={clsx(
+                    'py-2 rounded-lg border',
+                    fareClass === label ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600'
+                  )}
+                  onClick={() => setFareClass(label as typeof fareClass)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <button
             className="w-full bg-red-600 text-white font-semibold py-3 rounded-xl"
             onClick={() => {
@@ -719,10 +891,28 @@ export const MobilePassengerApp = () => {
                     {f.flightNumber} · {f.origin}-{f.destination}
                   </div>
                   <div className="text-xs text-slate-500">
-                    {formatDate(f.date)} · {formatTime(f.std)}
+                    {formatDate(f.date)} · {formatTime(f.std)} · {f.aircraft}
                   </div>
                 </button>
               ))}
+            </div>
+          )}
+
+          {bookingSelectedFlight && (
+            <div className="bg-white rounded-2xl shadow-sm p-4 space-y-2">
+              <div className="text-sm font-semibold">Price Breakdown</div>
+              <div className="flex justify-between text-sm text-slate-600">
+                <span>Base Fare ({fareClass})</span>
+                <span>€{farePricing.base.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm text-slate-600">
+                <span>Taxes & Fees</span>
+                <span>€{farePricing.taxes.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm font-semibold text-slate-800 border-t pt-2">
+                <span>Total</span>
+                <span>€{farePricing.total.toFixed(2)}</span>
+              </div>
             </div>
           )}
 
@@ -756,10 +946,49 @@ export const MobilePassengerApp = () => {
       {screen === 'account' && (
         <div className="p-4 space-y-4">
           <div className="bg-indigo-700 text-white rounded-2xl p-4">
-            <div className="text-lg font-semibold">{selectedPassenger?.firstName || 'Tomass'} {selectedPassenger?.lastName || 'Lakotko'}</div>
-            <div className="text-sm text-indigo-200">SkyMiles Member</div>
+            <div className="text-lg font-semibold">
+              {profile.name || `${selectedPassenger?.firstName || 'Tomass'} ${selectedPassenger?.lastName || 'Lakotko'}`}
+            </div>
+            <div className="text-sm text-indigo-200">
+              SkyMiles Member {profile.skymiles ? `· #${profile.skymiles}` : ''}
+            </div>
             <div className="text-3xl font-semibold mt-2">0</div>
             <div className="text-xs text-indigo-200">Miles Available</div>
+          </div>
+          <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
+            <div className="text-sm font-semibold text-slate-600">Profile</div>
+            <input
+              className="w-full border rounded-lg px-3 py-2 text-sm"
+              placeholder="Full name"
+              value={profile.name}
+              onChange={(e) => setProfile((prev) => ({ ...prev, name: e.target.value }))}
+            />
+            <input
+              className="w-full border rounded-lg px-3 py-2 text-sm"
+              placeholder="Email"
+              value={profile.email}
+              onChange={(e) => setProfile((prev) => ({ ...prev, email: e.target.value }))}
+            />
+            <input
+              className="w-full border rounded-lg px-3 py-2 text-sm"
+              placeholder="SkyMiles #"
+              value={profile.skymiles}
+              onChange={(e) => setProfile((prev) => ({ ...prev, skymiles: e.target.value }))}
+            />
+            <div className="flex gap-2">
+              <button
+                className="flex-1 bg-blue-600 text-white font-semibold py-2 rounded-lg"
+                onClick={() => setSuccess('Profile saved.')}
+              >
+                Save
+              </button>
+              <button
+                className="flex-1 bg-slate-200 text-slate-700 font-semibold py-2 rounded-lg"
+                onClick={() => setProfile({ name: '', email: '', skymiles: '' })}
+              >
+                Clear
+              </button>
+            </div>
           </div>
           <div className="bg-white rounded-2xl shadow-sm p-4">
             <div className="text-sm font-semibold text-slate-600">STATUS PROGRESS</div>
@@ -769,6 +998,22 @@ export const MobilePassengerApp = () => {
               </div>
             </div>
             <div className="text-xs text-slate-500 text-center">$0 MQDs to Medallion</div>
+          </div>
+          <div className="bg-white rounded-2xl shadow-sm p-4">
+            <div className="text-sm font-semibold text-slate-600 mb-2">Saved Passengers</div>
+            {tripPassengers.length === 0 && (
+              <div className="text-sm text-slate-500">No saved passengers yet.</div>
+            )}
+            <div className="space-y-2">
+              {tripPassengers.map((p) => (
+                <div key={p!.pnr} className="flex items-center justify-between text-sm text-slate-700">
+                  <div>
+                    {p!.firstName} {p!.lastName}
+                  </div>
+                  <div className="text-xs text-slate-500">{p!.pnr}</div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -826,6 +1071,9 @@ export const MobilePassengerApp = () => {
         <div className="p-4 space-y-4">
           <div className="bg-white rounded-xl shadow-sm p-4">
             <h2 className="font-semibold mb-3">Seat Selection</h2>
+            <div className="text-xs text-slate-500 mb-3">
+              Aircraft: {selectedFlight.aircraft || 'N/A'} · Layout {getSeatLayout(selectedFlight.aircraft).rows} rows
+            </div>
             <div className="grid grid-cols-6 gap-2 max-h-[55vh] overflow-y-auto">
               {seatMap.map((seat) => {
                 const occupied = passengers.some(
@@ -914,10 +1162,86 @@ export const MobilePassengerApp = () => {
         </div>
       )}
 
+      {screen === 'boardingPass' && selectedPassenger && (
+        <div className="p-4 space-y-4">
+          <div className="bg-white rounded-2xl shadow-sm p-4">
+            <div className="text-xs text-slate-500">Confirmation # {selectedPassenger.pnr}</div>
+            <div className="text-xl font-semibold mt-2">
+              {selectedPassenger.firstName} {selectedPassenger.lastName}
+            </div>
+            <div className="text-sm text-slate-600 mt-1">
+              {selectedFlight ? `${selectedFlight.origin} → ${selectedFlight.destination}` : 'Flight TBD'}
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-xs text-slate-600 mt-4">
+              <div>
+                <div className="text-slate-400">Flight</div>
+                <div className="font-semibold">{selectedFlight?.flightNumber || '--'}</div>
+              </div>
+              <div>
+                <div className="text-slate-400">Seat</div>
+                <div className="font-semibold">{selectedPassenger.seat || '--'}</div>
+              </div>
+              <div>
+                <div className="text-slate-400">Gate</div>
+                <div className="font-semibold">{selectedFlight?.gate || 'TBA'}</div>
+              </div>
+            </div>
+            <div className="text-xs text-slate-500 mt-3">
+              {selectedFlight ? `${formatDate(selectedFlight.date)} · ${formatTime(selectedFlight.std)}` : 'Date TBA'}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm p-4 flex flex-col items-center gap-4">
+            <QRCode
+              value={JSON.stringify({
+                pnr: selectedPassenger.pnr,
+                name: `${selectedPassenger.lastName}/${selectedPassenger.firstName}`,
+                flight: selectedFlight?.flightNumber || '',
+                seat: selectedPassenger.seat || '',
+                gate: selectedFlight?.gate || '',
+                date: selectedFlight?.date || ''
+              })}
+              size={160}
+              style={{ height: 'auto', maxWidth: '100%', width: '100%' }}
+              viewBox="0 0 160 160"
+            />
+            <button className="w-full bg-blue-600 text-white font-semibold py-2 rounded-lg">
+              Add to Wallet
+            </button>
+          </div>
+        </div>
+      )}
+
       {screen === 'notifications' && (
         <div className="p-4 space-y-4">
           <div className="bg-white rounded-xl shadow-sm p-4">
             <h2 className="font-semibold mb-3">Notifications</h2>
+            <div className="flex items-center justify-between text-sm text-slate-600 mb-3">
+              <span>Enable push alerts</span>
+              <button
+                className={clsx(
+                  'h-6 w-12 rounded-full relative transition',
+                  notificationsEnabled ? 'bg-green-500' : 'bg-slate-200'
+                )}
+                onClick={async () => {
+                  if (!notificationsEnabled && 'Notification' in window) {
+                    const permission = await Notification.requestPermission();
+                    if (permission !== 'granted') {
+                      setNotificationsEnabled(false);
+                      return;
+                    }
+                  }
+                  setNotificationsEnabled((prev) => !prev);
+                }}
+              >
+                <span
+                  className={clsx(
+                    'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition',
+                    notificationsEnabled ? 'left-6' : 'left-1'
+                  )}
+                />
+              </button>
+            </div>
             {notifications.length === 0 && <div className="text-sm text-slate-500">No updates yet.</div>}
             <div className="space-y-2">
               {notifications.map((note) => (
