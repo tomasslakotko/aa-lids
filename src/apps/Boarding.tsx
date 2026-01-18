@@ -56,7 +56,7 @@ export const BoardingApp = () => {
   const selectedFlight = flights.find(f => f.id === selectedFlightId);
   
   // Helper function to add notification for passenger
-  const addPassengerNotification = (pnr: string, message: string) => {
+  const addPassengerNotification = (_pnr: string, message: string) => {
     try {
       const NOTIFY_KEY = 'mobile-notifications-v1';
       const saved = localStorage.getItem(NOTIFY_KEY);
