@@ -1004,7 +1004,7 @@ export const useAirportStore = create<AirportStore>()(
              bagCount: 0,
              passengerType,
              staffId,
-             userEmail: userEmail || null
+             userEmail: userEmail || undefined
           }]
         }));
         const typeLabel = passengerType === 'STAFF_DUTY' ? 'STAFF DUTY' : passengerType === 'STAFF_SBY' ? 'STAFF STANDBY' : 'REVENUE';
