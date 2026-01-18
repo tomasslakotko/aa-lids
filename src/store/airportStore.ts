@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { initializeDatabase, loadAllData, saveAllData, saveFlights, saveFlightDirect } from '../services/database';
+import { initializeDatabase, loadAllData, saveAllData, saveFlightDirect } from '../services/database';
 import { setupRealtimeSubscriptions, setLocalUpdateFlag } from '../services/realtime';
 
 // --- Types ---
