@@ -58,29 +58,65 @@ export const BoardingApp = () => {
   const selectedFlight = flights.find(f => f.id === selectedFlightId);
   
   // Helper function to add notification for passenger
-  const addPassengerNotification = async (_pnr: string, message: string) => {
+  const addPassengerNotification = async (pnr: string, message: string) => {
     try {
-      const NOTIFY_KEY = 'mobile-notifications-v1';
+      const NOTIFY_KEY = 'mobile-notifications-v2'; // Changed key to v2 for new structure
       const saved = localStorage.getItem(NOTIFY_KEY);
-      const notifications = saved ? JSON.parse(saved) : [];
+      const notificationsByPnr: Record<string, string[]> = saved ? JSON.parse(saved) : {};
       const timestamp = new Date().toLocaleTimeString();
       const fullMessage = `${timestamp} · ${message}`;
-      // Add notification if not already present
-      if (!notifications.includes(fullMessage)) {
-        notifications.unshift(fullMessage);
-        localStorage.setItem(NOTIFY_KEY, JSON.stringify(notifications.slice(0, 50)));
+      
+      // Initialize array for this PNR if it doesn't exist
+      if (!notificationsByPnr[pnr]) {
+        notificationsByPnr[pnr] = [];
+      }
+      
+      // Add notification if not already present for this PNR
+      if (!notificationsByPnr[pnr].includes(fullMessage)) {
+        notificationsByPnr[pnr].unshift(fullMessage);
+        // Keep only last 50 notifications per passenger
+        notificationsByPnr[pnr] = notificationsByPnr[pnr].slice(0, 50);
+        localStorage.setItem(NOTIFY_KEY, JSON.stringify(notificationsByPnr));
       }
       // Request permission and send browser notification
       if ('Notification' in window) {
-        if (Notification.permission === 'default') {
-          // Permission not yet requested, ask for it
-          const permission = await Notification.requestPermission();
-          if (permission === 'granted') {
-            new Notification('Flight Update', { body: message });
+        try {
+          const permission = Notification.permission;
+          console.log('[Boarding] Notification permission status:', permission);
+          
+          if (permission === 'default') {
+            // Permission not yet requested, ask for it
+            console.log('[Boarding] Requesting notification permission...');
+            const newPermission = await Notification.requestPermission();
+            console.log('[Boarding] Permission result:', newPermission);
+            if (newPermission === 'granted') {
+              const notification = new Notification('Flight Update', { 
+                body: message,
+                icon: '/vite.svg',
+                badge: '/vite.svg',
+                tag: 'flight-update'
+              });
+              console.log('[Boarding] Notification sent:', notification);
+            } else {
+              console.log('[Boarding] Permission denied by user:', newPermission);
+            }
+          } else if (permission === 'granted') {
+            // Permission already granted, send notification
+            const notification = new Notification('Flight Update', { 
+              body: message,
+              icon: '/vite.svg',
+              badge: '/vite.svg',
+              tag: 'flight-update'
+            });
+            console.log('[Boarding] Notification sent:', notification);
+          } else {
+            console.log('[Boarding] Notification permission denied');
           }
-        } else if (Notification.permission === 'granted') {
-          new Notification('Flight Update', { body: message });
+        } catch (error) {
+          console.error('[Boarding] Error sending notification:', error);
         }
+      } else {
+        console.log('[Boarding] Notifications not supported in this browser');
       }
     } catch (error) {
       console.error('Error adding notification:', error);
@@ -181,7 +217,7 @@ export const BoardingApp = () => {
     }
   };
 
-  const handleBoardPax = (pnr: string) => {
+  const handleBoardPax = async (pnr: string) => {
     // Check if passenger has a boarding comment
     const pax = passengers.find(p => p.pnr === pnr);
     if (pax && pax.boardingComment && pax.boardingComment.trim()) {
@@ -203,6 +239,14 @@ export const BoardingApp = () => {
         alert(`Cannot board passenger: Status is ${passenger.status}. Passenger must be CHECKED_IN to board.`);
       } else {
         alert(`Passenger with PNR ${pnr} not found.`);
+      }
+    } else {
+      // Boarding successful - send notification
+      const passenger = passengers.find(p => p.pnr === pnr);
+      if (passenger) {
+        const flight = flights.find(f => f.id === passenger.flightId);
+        const flightInfo = flight ? `${flight.flightNumber} to ${flight.destinationCity || flight.destination}` : 'your flight';
+        await addPassengerNotification(pnr, `Boarding successful! Have a safe flight on ${flightInfo}! ✈️`);
       }
     }
   };
@@ -330,7 +374,7 @@ export const BoardingApp = () => {
   };
 
   // Process scanned QR code from boarding pass
-  const processScannedCode = (code: string) => {
+  const processScannedCode = async (code: string) => {
     let pnr: string | null = null;
     let passengerId: string | null = null;
     let qrFlightNumber: string | null = null;
@@ -432,6 +476,10 @@ export const BoardingApp = () => {
       if (isScanning) {
         stopScanner();
       }
+      // Send notification to passenger
+      const flight = flights.find(f => f.id === found.flightId) || selectedFlight;
+      const flightInfo = flight ? `${flight.flightNumber} to ${flight.destinationCity || flight.destination}` : 'your flight';
+      await addPassengerNotification(found.pnr, `Boarding successful! Have a safe flight on ${flightInfo}! ✈️`);
       // Show success message
       setTimeout(() => {
         alert(`✓ Passenger ${found.lastName}, ${found.firstName} (${found.pnr})\n✓ Flight: ${selectedFlight?.flightNumber || found.flightId}\n✓ Seat: ${found.seat || 'TBA'}\n\nBoarded successfully!`);
@@ -1095,10 +1143,17 @@ export const BoardingApp = () => {
             </div>
             <div className="flex gap-3">
               <button
-                onClick={() => {
+                onClick={async () => {
                   // Acknowledge and board the passenger
                   const result = boardPassenger(commentPassenger.pnr);
                   if (result) {
+                    // Boarding successful - send notification
+                    const passenger = passengers.find(p => p.pnr === commentPassenger.pnr);
+                    if (passenger) {
+                      const flight = flights.find(f => f.id === passenger.flightId);
+                      const flightInfo = flight ? `${flight.flightNumber} to ${flight.destinationCity || flight.destination}` : 'your flight';
+                      await addPassengerNotification(commentPassenger.pnr, `Boarding successful! Have a safe flight on ${flightInfo}! ✈️`);
+                    }
                     setShowCommentModal(false);
                     setCommentPassenger(null);
                   }

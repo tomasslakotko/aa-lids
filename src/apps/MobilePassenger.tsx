@@ -32,7 +32,7 @@ type Screen =
 
 const TRIPS_KEY = 'mobile-trips-v1';
 const SELECTED_KEY = 'mobile-selected-pnr-v1';
-const NOTIFY_KEY = 'mobile-notifications-v1';
+const NOTIFY_KEY = 'mobile-notifications-v2'; // Updated to v2 for PNR-based structure
 const NOTIFY_ENABLED_KEY = 'mobile-notifications-enabled-v1';
 const PROFILE_KEY = 'mobile-profile-v1';
 const RECENT_SEARCH_KEY = 'mobile-recent-search-v1';
@@ -70,7 +70,10 @@ export const MobilePassengerApp = () => {
   const [notifications, setNotifications] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem(NOTIFY_KEY);
-      return saved ? JSON.parse(saved) : [];
+      const notificationsByPnr: Record<string, string[]> = saved ? JSON.parse(saved) : {};
+      // Load notifications for selected PNR, or empty array if no PNR selected
+      const selectedPnrFromStorage = localStorage.getItem(SELECTED_KEY) || '';
+      return notificationsByPnr[selectedPnrFromStorage] || [];
     } catch {
       return [];
     }
@@ -131,6 +134,32 @@ export const MobilePassengerApp = () => {
 
   useEffect(() => {
     initializeAirportDatabase();
+    
+    // Migrate old notifications format (v1) to new format (v2) if needed
+    try {
+      const oldKey = 'mobile-notifications-v1';
+      const newKey = 'mobile-notifications-v2';
+      const oldSaved = localStorage.getItem(oldKey);
+      const newSaved = localStorage.getItem(newKey);
+      
+      if (oldSaved && !newSaved) {
+        // Old format exists but new format doesn't - migrate
+        const oldNotifications: string[] = JSON.parse(oldSaved);
+        if (oldNotifications.length > 0) {
+          const currentPnr = localStorage.getItem(SELECTED_KEY) || '';
+          if (currentPnr) {
+            // Migrate to new format with PNR structure
+            const notificationsByPnr: Record<string, string[]> = {};
+            notificationsByPnr[currentPnr] = oldNotifications;
+            localStorage.setItem(newKey, JSON.stringify(notificationsByPnr));
+          }
+          // Remove old format after migration
+          localStorage.removeItem(oldKey);
+        }
+      }
+    } catch (error) {
+      console.error('Error migrating notifications:', error);
+    }
   }, []);
 
   useEffect(() => {
@@ -138,6 +167,26 @@ export const MobilePassengerApp = () => {
       setLastSync(new Date().toLocaleString());
     }
   }, [isDatabaseReady]);
+
+  // Check notification permission status on load and sync with state
+  useEffect(() => {
+    if ('Notification' in window) {
+      const permission = Notification.permission;
+      if (permission === 'granted') {
+        setNotificationsEnabled(true);
+      } else {
+        setNotificationsEnabled(false);
+      }
+    }
+  }, []);
+
+  // Request notification permission on first app load (optional - can be removed if too aggressive)
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      // Don't auto-request, let user enable it manually
+      // This is less intrusive
+    }
+  }, []);
 
   useEffect(() => {
     // Enable scrolling inside the mobile shell even though body is overflow-hidden
@@ -154,11 +203,33 @@ export const MobilePassengerApp = () => {
 
   useEffect(() => {
     localStorage.setItem(SELECTED_KEY, selectedPnr);
+    // Load notifications for the selected PNR
+    if (selectedPnr) {
+      try {
+        const saved = localStorage.getItem(NOTIFY_KEY);
+        const notificationsByPnr: Record<string, string[]> = saved ? JSON.parse(saved) : {};
+        setNotifications(notificationsByPnr[selectedPnr] || []);
+      } catch {
+        setNotifications([]);
+      }
+    } else {
+      setNotifications([]);
+    }
   }, [selectedPnr]);
 
   useEffect(() => {
-    localStorage.setItem(NOTIFY_KEY, JSON.stringify(notifications));
-  }, [notifications]);
+    // Save notifications for the current selected PNR
+    if (selectedPnr) {
+      try {
+        const saved = localStorage.getItem(NOTIFY_KEY);
+        const notificationsByPnr: Record<string, string[]> = saved ? JSON.parse(saved) : {};
+        notificationsByPnr[selectedPnr] = notifications;
+        localStorage.setItem(NOTIFY_KEY, JSON.stringify(notificationsByPnr));
+      } catch (error) {
+        console.error('Error saving notifications:', error);
+      }
+    }
+  }, [notifications, selectedPnr]);
 
   useEffect(() => {
     localStorage.setItem(NOTIFY_ENABLED_KEY, JSON.stringify(notificationsEnabled));
@@ -277,16 +348,53 @@ export const MobilePassengerApp = () => {
       if (prev[0] === message) return prev;
       return [message, ...prev].slice(0, 50);
     });
-    if (notificationsEnabled && 'Notification' in window) {
-      if (Notification.permission === 'default') {
-        // Permission not yet requested, ask for it
-        const permission = await Notification.requestPermission();
-        if (permission === 'granted') {
-          new Notification('Flight Update', { body: message });
+    
+    // Send browser notification if enabled
+    if ('Notification' in window) {
+      try {
+        const permission = Notification.permission;
+        console.log('Notification permission status:', permission);
+        console.log('Notifications enabled:', notificationsEnabled);
+        
+        if (permission === 'default') {
+          // Permission not yet requested, ask for it
+          console.log('Requesting notification permission...');
+          const newPermission = await Notification.requestPermission();
+          console.log('Permission result:', newPermission);
+          if (newPermission === 'granted') {
+            setNotificationsEnabled(true);
+            const notification = new Notification('Flight Update', { 
+              body: message,
+              icon: '/vite.svg',
+              badge: '/vite.svg',
+              tag: 'flight-update'
+            });
+            console.log('Notification sent:', notification);
+          } else {
+            console.log('Permission denied by user');
+          }
+        } else if (permission === 'granted') {
+          // Permission already granted, send notification
+          if (notificationsEnabled) {
+            const notification = new Notification('Flight Update', { 
+              body: message,
+              icon: '/vite.svg',
+              badge: '/vite.svg',
+              tag: 'flight-update'
+            });
+            console.log('Notification sent:', notification);
+          } else {
+            console.log('Notifications disabled by user toggle');
+          }
+        } else {
+          // Permission denied
+          console.log('Notification permission denied');
         }
-      } else if (Notification.permission === 'granted') {
-        new Notification('Flight Update', { body: message });
+      } catch (error) {
+        console.error('Error sending notification:', error);
       }
+    } else {
+      console.log('Notifications not supported in this browser');
     }
   };
 
@@ -1522,40 +1630,74 @@ export const MobilePassengerApp = () => {
         <div className="p-4 space-y-4">
           <div className="bg-white rounded-xl shadow-sm p-4">
             <h2 className="font-semibold mb-3">Notifications</h2>
+            {'Notification' in window && Notification.permission === 'default' && (
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-3">
+                <p className="text-sm text-orange-800 mb-2">
+                  Enable browser notifications to receive flight updates
+                </p>
+                <button
+                  className="w-full bg-orange-600 text-white font-semibold py-2 rounded-lg text-sm"
+                  onClick={async () => {
+                    try {
+                      const permission = await Notification.requestPermission();
+                      if (permission === 'granted') {
+                        setNotificationsEnabled(true);
+                        alert('Notifications enabled! You will receive flight updates.');
+                      } else {
+                        alert('Notification permission denied. Please enable it in your browser settings.');
+                      }
+                    } catch (error) {
+                      console.error('Error requesting notification permission:', error);
+                      alert('Failed to request notification permission.');
+                    }
+                  }}
+                >
+                  Enable Notifications
+                </button>
+              </div>
+            )}
+            {'Notification' in window && Notification.permission === 'denied' && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
+                <p className="text-sm text-red-800">
+                  Notifications are blocked in your browser. Please enable them in browser settings.
+                </p>
+              </div>
+            )}
             <div className="flex items-center justify-between text-sm text-slate-600 mb-3">
               <span>Enable push alerts</span>
               <div className="flex items-center gap-2">
-                {'Notification' in window && Notification.permission === 'default' && (
-                  <span className="text-xs text-orange-600">Click to enable</span>
-                )}
-                {'Notification' in window && Notification.permission === 'denied' && (
-                  <span className="text-xs text-red-600">Blocked in browser</span>
-                )}
                 <button
                   className={clsx(
                     'h-6 w-12 rounded-full relative transition',
-                    notificationsEnabled ? 'bg-green-500' : 'bg-slate-200'
+                    notificationsEnabled && Notification.permission === 'granted' ? 'bg-green-500' : 'bg-slate-200'
                   )}
                   onClick={async () => {
-                    if (!notificationsEnabled && 'Notification' in window) {
-                      const permission = await Notification.requestPermission();
-                      if (permission !== 'granted') {
-                        setNotificationsEnabled(false);
-                        alert('Notification permission denied. Please enable it in your browser settings.');
-                        return;
+                    if ('Notification' in window) {
+                      if (Notification.permission === 'default') {
+                        const permission = await Notification.requestPermission();
+                        if (permission === 'granted') {
+                          setNotificationsEnabled(true);
+                        } else {
+                          setNotificationsEnabled(false);
+                          alert('Notification permission denied. Please enable it in your browser settings.');
+                          return;
+                        }
+                      } else if (Notification.permission === 'granted') {
+                        setNotificationsEnabled((prev) => !prev);
+                      } else {
+                        alert('Notifications are blocked. Please enable them in your browser settings.');
                       }
                     }
-                    setNotificationsEnabled((prev) => !prev);
                   }}
                 >
-                <span
-                  className={clsx(
-                    'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition',
-                    notificationsEnabled ? 'left-6' : 'left-1'
-                  )}
-                />
-              </button>
-            </div>
+                  <span
+                    className={clsx(
+                      'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition',
+                      notificationsEnabled && Notification.permission === 'granted' ? 'left-6' : 'left-1'
+                    )}
+                  />
+                </button>
+              </div>
             </div>
             {notifications.length === 0 && <div className="text-sm text-slate-500">No updates yet.</div>}
             <div className="space-y-2">
