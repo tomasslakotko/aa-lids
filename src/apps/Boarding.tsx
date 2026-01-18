@@ -241,6 +241,7 @@ export const BoardingApp = () => {
   const processScannedCode = (code: string) => {
     let pnr: string | null = null;
     let passengerId: string | null = null;
+    let qrFlightNumber: string | null = null;
     
     // Try to parse as JSON (QR code from boarding pass)
     try {
@@ -250,6 +251,9 @@ export const BoardingApp = () => {
       }
       if (qrData.passengerId) {
         passengerId = qrData.passengerId;
+      }
+      if (qrData.flight) {
+        qrFlightNumber = qrData.flight.toUpperCase();
       }
     } catch (e) {
       // Not JSON, try to extract PNR from text/barcode format
@@ -278,10 +282,31 @@ export const BoardingApp = () => {
       return;
     }
     
+    // Verify flight match if QR code contains flight number
+    if (qrFlightNumber && selectedFlight) {
+      if (selectedFlight.flightNumber !== qrFlightNumber) {
+        setScanError(`QR code is for flight ${qrFlightNumber}, but current flight is ${selectedFlight.flightNumber}.`);
+        setSelectedPaxId(found.id);
+        return;
+      }
+    }
+    
     // Check if passenger is on the selected flight
     if (selectedFlightId && found.flightId !== selectedFlightId) {
-      setScanError(`Passenger is on a different flight. Please select flight ${found.flightId} first.`);
-      return;
+      // Auto-select the passenger's flight if it's different
+      const passengerFlight = flights.find(f => f.id === found.flightId);
+      if (passengerFlight) {
+        if (confirm(`Passenger is on flight ${passengerFlight.flightNumber}. Switch to that flight?`)) {
+          setSelectedFlightId(found.flightId);
+          setFlightInput(passengerFlight.flightNumber);
+        } else {
+          setScanError(`Passenger is on flight ${passengerFlight.flightNumber}, not ${selectedFlight?.flightNumber || 'selected flight'}.`);
+          return;
+        }
+      } else {
+        setScanError(`Passenger is on a different flight. Please select flight ${found.flightId} first.`);
+        return;
+      }
     }
     
     // If no flight selected, auto-select the passenger's flight
@@ -317,7 +342,7 @@ export const BoardingApp = () => {
       }
       // Show success message
       setTimeout(() => {
-        alert(`Passenger ${found.lastName}, ${found.firstName} (${found.pnr}) has been boarded successfully!`);
+        alert(`✓ Passenger ${found.lastName}, ${found.firstName} (${found.pnr})\n✓ Flight: ${selectedFlight?.flightNumber || found.flightId}\n✓ Seat: ${found.seat || 'TBA'}\n\nBoarded successfully!`);
       }, 100);
     } else {
       setScanError(`Failed to board passenger ${found.lastName}.`);

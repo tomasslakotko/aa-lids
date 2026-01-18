@@ -702,6 +702,31 @@ export const MobilePassengerApp = () => {
             </div>
           )}
 
+          {selectedPassenger && selectedPassenger.status === 'CHECKED_IN' && (
+            <div className="bg-white rounded-2xl shadow-sm p-4">
+              <div className="text-sm font-semibold text-slate-800 mb-3">Boarding Pass QR Code</div>
+              <div className="flex justify-center bg-white p-3 rounded-lg border-2 border-slate-200">
+                <QRCode
+                  value={JSON.stringify({
+                    pnr: selectedPassenger.pnr,
+                    name: `${selectedPassenger.lastName}/${selectedPassenger.firstName}`,
+                    flight: selectedFlight?.flightNumber || '',
+                    seat: selectedPassenger.seat || '',
+                    gate: selectedFlight?.gate || '',
+                    date: selectedFlight?.date || '',
+                    status: selectedPassenger.status
+                  })}
+                  size={180}
+                  style={{ height: 'auto', maxWidth: '100%', width: '100%' }}
+                  viewBox="0 0 180 180"
+                />
+              </div>
+              <div className="text-xs text-slate-500 text-center mt-2">
+                Show this QR code at the gate for boarding
+              </div>
+            </div>
+          )}
+
           <div className="grid gap-3">
             <button
               className="bg-white rounded-xl shadow-sm p-4 flex items-center gap-3"
@@ -847,6 +872,30 @@ export const MobilePassengerApp = () => {
                   <div className="font-semibold">{selectedFlight?.flightNumber || '--'}</div>
                 </div>
               </div>
+              {selectedPassenger.status === 'CHECKED_IN' && (
+                <div className="border-t pt-4">
+                  <div className="text-xs text-slate-400 mb-2 text-center">Boarding Pass QR Code</div>
+                  <div className="flex justify-center bg-white p-4 rounded-lg">
+                    <QRCode
+                      value={JSON.stringify({
+                        pnr: selectedPassenger.pnr,
+                        name: `${selectedPassenger.lastName}/${selectedPassenger.firstName}`,
+                        flight: selectedFlight?.flightNumber || '',
+                        seat: selectedPassenger.seat || '',
+                        gate: selectedFlight?.gate || '',
+                        date: selectedFlight?.date || '',
+                        status: selectedPassenger.status
+                      })}
+                      size={200}
+                      style={{ height: 'auto', maxWidth: '100%', width: '100%' }}
+                      viewBox="0 0 200 200"
+                    />
+                  </div>
+                  <div className="text-xs text-slate-500 text-center mt-2">
+                    Show this QR code at the gate
+                  </div>
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <span className="bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-semibold">
                   {selectedPassenger.seat === 'SBY' ? 'STANDBY' : 'CONFIRMED'}
