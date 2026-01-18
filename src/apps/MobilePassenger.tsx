@@ -48,7 +48,6 @@ export const MobilePassengerApp = () => {
   const createBooking = useAirportStore((state) => state.createBooking);
   const addLog = useAirportStore((state) => state.addLog);
   const addEmailContact = useAirportStore((state) => state.addEmailContact);
-  const addFlight = useAirportStore((state) => state.addFlight);
   const loadFromDatabase = useAirportStore((state) => state.loadFromDatabase);
   const isDatabaseReady = useAirportStore((state) => state.isDatabaseReady);
 
@@ -472,33 +471,6 @@ export const MobilePassengerApp = () => {
     });
     return options;
   }, [flightsForDate, searchOrigin, searchDestination]);
-
-  const generateFlightNumber = (origin: string, destination: string) => {
-    const carrier = origin === 'RIX' ? 'BT' : 'XX';
-    const seed = Math.floor(Math.random() * 800) + 100;
-    return `${carrier}${seed}`;
-  };
-
-  const generateFlight = (origin: string, destination: string, date: string) => {
-    const hour = Math.floor(Math.random() * 12) + 6;
-    const minute = Math.floor(Math.random() * 12) * 5;
-    const std = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-    const gate = ['A', 'B', 'C'][Math.floor(Math.random() * 3)] + Math.floor(Math.random() * 25 + 1);
-    return {
-      id: Math.random().toString(36).substr(2, 9),
-      flightNumber: generateFlightNumber(origin, destination),
-      origin,
-      destination,
-      originCity: origin,
-      destinationCity: destination,
-      std,
-      etd: std,
-      date,
-      gate,
-      status: 'SCHEDULED' as const,
-      aircraft: 'A220'
-    };
-  };
 
   const estimateDurationMinutes = (flight?: typeof selectedFlight) => {
     if (!flight) return 120;
