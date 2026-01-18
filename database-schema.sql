@@ -47,6 +47,16 @@ CREATE TABLE IF NOT EXISTS passengers (
   security_note TEXT,
   boarding_comment TEXT,
   user_email TEXT,
+  loyalty_status TEXT DEFAULT 'NONE',
+  miles_earned INTEGER DEFAULT 0,
+  meal_preference TEXT,
+  special_meals TEXT,
+  dietary_requirements TEXT,
+  wifi_requested BOOLEAN DEFAULT FALSE,
+  entertainment_requested BOOLEAN DEFAULT FALSE,
+  extra_legroom BOOLEAN DEFAULT FALSE,
+  bag_status TEXT DEFAULT 'CHECKED',
+  bag_location TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -129,6 +139,8 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE INDEX IF NOT EXISTS idx_passengers_pnr ON passengers(pnr);
 CREATE INDEX IF NOT EXISTS idx_passengers_flight_id ON passengers(flight_id);
 CREATE INDEX IF NOT EXISTS idx_passengers_user_email ON passengers(user_email);
+CREATE INDEX IF NOT EXISTS idx_passengers_loyalty_status ON passengers(loyalty_status);
+CREATE INDEX IF NOT EXISTS idx_passengers_bag_status ON passengers(bag_status);
 CREATE INDEX IF NOT EXISTS idx_flights_status ON flights(status);
 CREATE INDEX IF NOT EXISTS idx_logs_source ON logs(source);
 CREATE INDEX IF NOT EXISTS idx_emails_pnr ON emails(pnr);

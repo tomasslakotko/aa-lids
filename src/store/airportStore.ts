@@ -55,6 +55,20 @@ export interface Passenger {
   bagWaiverKg?: number;
   bagWaiverReason?: string;
   userEmail?: string; // Email of the user who created this booking
+  // Loyalty program
+  loyaltyStatus?: 'NONE' | 'SILVER' | 'GOLD' | 'PLATINUM';
+  milesEarned?: number;
+  // Meals
+  mealPreference?: string; // STANDARD, VEGETARIAN, VEGAN, KOSHER, HALAL, etc.
+  specialMeals?: string[]; // Array of special meal requests
+  dietaryRequirements?: string;
+  // Services
+  wifiRequested?: boolean;
+  entertainmentRequested?: boolean;
+  extraLegroom?: boolean;
+  // Baggage tracking
+  bagStatus?: 'CHECKED' | 'LOADED' | 'UNLOADED' | 'LOST';
+  bagLocation?: string; // Location where bag is stored/loaded
 }
 
 export interface LogEntry {

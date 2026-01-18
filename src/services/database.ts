@@ -277,7 +277,17 @@ async function loadPassengers(): Promise<Passenger[]> {
     securityStatus: row.security_status,
     securityNote: row.security_note,
     boardingComment: row.boarding_comment || undefined,
-    userEmail: row.user_email || undefined
+    userEmail: row.user_email || undefined,
+    loyaltyStatus: row.loyalty_status || undefined,
+    milesEarned: row.miles_earned || 0,
+    mealPreference: row.meal_preference || undefined,
+    specialMeals: row.special_meals ? JSON.parse(row.special_meals) : undefined,
+    dietaryRequirements: row.dietary_requirements || undefined,
+    wifiRequested: row.wifi_requested || false,
+    entertainmentRequested: row.entertainment_requested || false,
+    extraLegroom: row.extra_legroom || false,
+    bagStatus: row.bag_status || undefined,
+    bagLocation: row.bag_location || undefined
   })) as Passenger[];
 }
 
@@ -305,7 +315,17 @@ export async function savePassengers(passengers: Passenger[]) {
       security_status: p.securityStatus || null,
       security_note: p.securityNote || null,
       boarding_comment: p.boardingComment || null,
-      user_email: p.userEmail || null
+      user_email: p.userEmail || null,
+      loyalty_status: p.loyaltyStatus || null,
+      miles_earned: p.milesEarned || 0,
+      meal_preference: p.mealPreference || null,
+      special_meals: p.specialMeals ? JSON.stringify(p.specialMeals) : null,
+      dietary_requirements: p.dietaryRequirements || null,
+      wifi_requested: p.wifiRequested || false,
+      entertainment_requested: p.entertainmentRequested || false,
+      extra_legroom: p.extraLegroom || false,
+      bag_status: p.bagStatus || null,
+      bag_location: p.bagLocation || null
     }));
     
     // Use UPSERT to avoid duplicate key errors

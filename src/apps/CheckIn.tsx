@@ -323,7 +323,26 @@ const BagTag = ({ passenger, flight, bagIndex, weight }: { passenger: any, fligh
             
             {/* Top Barcode Section */}
             <div className="p-2 text-center border-b-2 border-black">
-                <div className="h-16 w-full overflow-hidden mb-1"><Barcode /></div>
+                <div className="flex items-center gap-2 mb-1">
+                    <div className="h-16 flex-1 overflow-hidden"><Barcode /></div>
+                    <div className="w-16 h-16 bg-white border border-gray-300 p-1">
+                        <QRCode
+                            value={JSON.stringify({
+                                pnr: passenger.pnr,
+                                passengerId: passenger.id,
+                                bagIndex: bagIndex,
+                                flight: flight.flightNumber,
+                                origin: flight.origin,
+                                destination: flight.destination,
+                                weight: weight,
+                                tagNumber: `00BT${passenger.pnr}${bagIndex + 1}`
+                            })}
+                            size={56}
+                            style={{ height: 'auto', maxWidth: '100%', width: '100%' }}
+                            viewBox="0 0 56 56"
+                        />
+                    </div>
+                </div>
                 <div className="h-8 w-full overflow-hidden px-2 mb-1"><Barcode /></div>
                 <div className="flex justify-between text-[10px] font-mono font-bold px-2">
                     <span>{flight.origin}</span>
@@ -331,8 +350,8 @@ const BagTag = ({ passenger, flight, bagIndex, weight }: { passenger: any, fligh
                     <span>{flight.destination}</span>
                 </div>
                 <div className="flex justify-between text-[10px] font-bold px-2 mt-1">
-                    <span>0074KL</span>
-                    <span>774268</span>
+                    <span>00BT{passenger.pnr}{bagIndex + 1}</span>
+                    <span>{passenger.pnr}</span>
                 </div>
             </div>
 
@@ -633,12 +652,23 @@ export const CheckInApp = () => {
       return;
     }
     if (foundPassenger && foundPassenger.status === 'BOOKED') {
+      // Calculate miles based on flight distance (simplified: assume 500 miles per flight)
+      const baseMiles = 500;
+      const loyaltyMultiplier = foundPassenger.loyaltyStatus === 'PLATINUM' ? 1.5 : 
+                                foundPassenger.loyaltyStatus === 'GOLD' ? 1.25 : 
+                                foundPassenger.loyaltyStatus === 'SILVER' ? 1.1 : 1.0;
+      const milesToAdd = Math.round(baseMiles * loyaltyMultiplier);
+      const newMilesEarned = (foundPassenger.milesEarned || 0) + milesToAdd;
+      
       updatePassengerDetails(foundPassenger.pnr, { 
         bagCount: parseInt(bagPcs), 
-        hasBags: parseInt(bagPcs) > 0 
+        hasBags: parseInt(bagPcs) > 0,
+        milesEarned: newMilesEarned,
+        bagStatus: 'CHECKED' // Set initial bag status when checked in
       });
       await checkInPassenger(foundPassenger.pnr);
-      alert('PASSENGER ACCEPTED');
+      addLog(`Miles earned: ${milesToAdd} (Total: ${newMilesEarned}) for ${foundPassenger.lastName}`, 'CHECK-IN', 'INFO');
+      alert(`PASSENGER ACCEPTED\nMiles earned: ${milesToAdd} (Total: ${newMilesEarned})`);
       setCurrentScreen('IDENTIFICATION');
       setIdentName('');
       setIdentPnr('');
@@ -979,6 +1009,110 @@ export const CheckInApp = () => {
     ? logs.filter((log) => log.message?.includes(foundPassenger.pnr))
     : [];
 
+  // Hotkeys support
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      // Only handle function keys when not in input fields
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      // F1 - Basic Options
+      if (e.key === 'F1') {
+        e.preventDefault();
+        console.log('F1 - Basic Options');
+      }
+      
+      // F2 - Advanced Options
+      if (e.key === 'F2') {
+        e.preventDefault();
+        console.log('F2 - Advanced Options');
+      }
+      
+      // F3 - Accept/Modify
+      if (e.key === 'F3' && currentScreen === 'ACCEPTANCE' && foundPassenger) {
+        e.preventDefault();
+        handleAccept();
+      }
+      
+      // F4 - Seat Map
+      if (e.key === 'F4' && currentScreen === 'ACCEPTANCE' && foundPassenger && !isFlightClosed) {
+        e.preventDefault();
+        setCurrentScreen('SEAT_MAP');
+      }
+      
+      // F5 - Baggage
+      if (e.key === 'F5' && currentScreen === 'ACCEPTANCE' && foundPassenger) {
+        e.preventDefault();
+        setCurrentScreen('BAGGAGE');
+      }
+      
+      // F6 - Print Boarding Pass
+      if (e.key === 'F6' && foundPassenger) {
+        e.preventDefault();
+        setShowPrintModal(true);
+      }
+      
+      // F7 - Document Verify
+      if (e.key === 'F7' && currentScreen === 'ACCEPTANCE' && foundPassenger && !isFlightClosed) {
+        e.preventDefault();
+        setShowDocVerifyModal(true);
+      }
+      
+      // F8 - Bag Waiver
+      if (e.key === 'F8' && currentScreen === 'ACCEPTANCE' && foundPassenger && !isFlightClosed) {
+        e.preventDefault();
+        setShowBagWaiverModal(true);
+      }
+      
+      // F9 - Set SBY Seat
+      if (e.key === 'F9' && currentScreen === 'ACCEPTANCE' && foundPassenger && !isFlightClosed) {
+        e.preventDefault();
+        if (confirm(`Set seat to SBY (Standby) for ${foundPassenger.lastName} ${foundPassenger.firstName}?`)) {
+          handleSeatChange('SBY', selectedPassengerForSeat || undefined);
+          alert('Seat set to SBY');
+        }
+      }
+      
+      // F10 - Back
+      if (e.key === 'F10') {
+        e.preventDefault();
+        handleBack();
+      }
+      
+      // F11 - Restart
+      if (e.key === 'F11') {
+        e.preventDefault();
+        handleRestart();
+      }
+      
+      // F12 - Print All
+      if (e.key === 'F12' && showPrintModal) {
+        e.preventDefault();
+        alert('Sent to printer');
+        setShowPrintModal(false);
+      }
+      
+      // Escape - Close modals/back
+      if (e.key === 'Escape') {
+        if (showPrintModal) {
+          setShowPrintModal(false);
+        } else if (showDocVerifyModal) {
+          setShowDocVerifyModal(false);
+        } else if (showBagWaiverModal) {
+          setShowBagWaiverModal(false);
+        } else if (currentScreen !== 'IDENTIFICATION') {
+          handleBack();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => {
+      window.removeEventListener('keydown', handleKeyPress);
+    };
+  }, [currentScreen, foundPassenger, isFlightClosed, selectedPassengerForSeat, showPrintModal, showDocVerifyModal, showBagWaiverModal]);
+
   return (
     <div className="h-full w-full bg-[#FDFBF7] text-xs font-sans flex flex-col select-none text-gray-800">
       
@@ -1198,6 +1332,15 @@ export const CheckInApp = () => {
                                   {(seg.passenger.bagWaiverPcs || seg.passenger.bagWaiverKg) && (
                                     <span className="bg-blue-500 text-blue-900 px-1.5 py-0.5 rounded text-[9px] font-bold border border-blue-600">WVR</span>
                                   )}
+                                  {seg.passenger.loyaltyStatus === 'PLATINUM' && (
+                                    <span className="bg-purple-600 text-purple-100 px-1.5 py-0.5 rounded text-[9px] font-bold border border-purple-700">PLAT</span>
+                                  )}
+                                  {seg.passenger.loyaltyStatus === 'GOLD' && (
+                                    <span className="bg-yellow-400 text-yellow-900 px-1.5 py-0.5 rounded text-[9px] font-bold border border-yellow-500">GOLD</span>
+                                  )}
+                                  {seg.passenger.loyaltyStatus === 'SILVER' && (
+                                    <span className="bg-gray-400 text-gray-900 px-1.5 py-0.5 rounded text-[9px] font-bold border border-gray-500">SILV</span>
+                                  )}
                                   {seg.flight && ['DEPARTED', 'ARRIVED'].includes(seg.flight.status) && (
                                     <span className="bg-gray-700 text-gray-100 px-1.5 py-0.5 rounded text-[9px] font-bold border border-gray-800">FLOWN</span>
                                   )}
@@ -1226,8 +1369,22 @@ export const CheckInApp = () => {
                            <td className="px-2 py-1 text-center">
                               {seg.passenger.bagCount > 0 && (
                                 <div className="relative inline-block">
-                                   <Luggage size={14} className="text-gray-600" />
-                                   <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[8px] px-0.5 rounded-full leading-none">
+                                   <Luggage 
+                                     size={14} 
+                                     className={clsx(
+                                       seg.passenger.bagStatus === 'LOADED' ? 'text-green-600' :
+                                       seg.passenger.bagStatus === 'UNLOADED' ? 'text-blue-600' :
+                                       seg.passenger.bagStatus === 'LOST' ? 'text-red-600' :
+                                       'text-gray-600'
+                                     )} 
+                                   />
+                                   <span className={clsx(
+                                     "absolute -top-1 -right-1 text-white text-[8px] px-0.5 rounded-full leading-none",
+                                     seg.passenger.bagStatus === 'LOADED' ? 'bg-green-600' :
+                                     seg.passenger.bagStatus === 'UNLOADED' ? 'bg-blue-600' :
+                                     seg.passenger.bagStatus === 'LOST' ? 'bg-red-600' :
+                                     'bg-gray-600'
+                                   )}>
                                      {seg.passenger.bagCount}
                                    </span>
                                 </div>
@@ -1241,7 +1398,7 @@ export const CheckInApp = () => {
              </div>
 
              {/* Action Panel */}
-             <div className="h-48 bg-[#FFFBE6] border border-[#7F9DB9] p-2 flex flex-col justify-between">
+             <div className="h-auto min-h-[400px] bg-[#FFFBE6] border border-[#7F9DB9] p-2 flex flex-col gap-4">
                 
                 <div className="flex items-center gap-2 bg-blue-50 p-1 border border-blue-200 mb-2">
                     <div className="bg-blue-600 text-white rounded-full w-4 h-4 flex items-center justify-center font-bold text-[10px]">i</div>
@@ -1347,6 +1504,173 @@ export const CheckInApp = () => {
                         </div>
                     </div>
                 </div>
+
+                {/* Additional Services Grid */}
+                <div className="grid grid-cols-3 gap-4 px-4">
+                    {/* Loyalty Program */}
+                    <div className="border-t border-[#D4D0C8] pt-2 relative">
+                        <span className="absolute -top-2.5 left-0 bg-[#FFFBE6] px-1 font-bold text-gray-600">Loyalty</span>
+                        <div className="mt-2 space-y-2">
+                            <div className="flex items-center gap-2">
+                                <label className="text-[10px]">Status:</label>
+                                <select
+                                    value={foundPassenger.loyaltyStatus || 'NONE'}
+                                    onChange={(e) => {
+                                        const targetPassengerId = selectedPassengerForSeat || foundPassenger?.id;
+                                        updatePassengerDetails(foundPassenger.pnr, { loyaltyStatus: e.target.value as any }, targetPassengerId);
+                                    }}
+                                    className="border border-[#7F9DB9] px-2 py-1 text-[10px] bg-white disabled:bg-gray-100"
+                                    disabled={isFlightClosed}
+                                >
+                                    <option value="NONE">None</option>
+                                    <option value="SILVER">Silver</option>
+                                    <option value="GOLD">Gold</option>
+                                    <option value="PLATINUM">Platinum</option>
+                                </select>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <label className="text-[10px]">Miles:</label>
+                                <input
+                                    type="number"
+                                    value={foundPassenger.milesEarned || 0}
+                                    onChange={(e) => {
+                                        const targetPassengerId = selectedPassengerForSeat || foundPassenger?.id;
+                                        updatePassengerDetails(foundPassenger.pnr, { milesEarned: parseInt(e.target.value) || 0 }, targetPassengerId);
+                                    }}
+                                    className="w-16 border border-[#7F9DB9] px-1 text-right text-[10px] disabled:bg-gray-100"
+                                    disabled={isFlightClosed}
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Meals */}
+                    <div className="border-t border-[#D4D0C8] pt-2 relative">
+                        <span className="absolute -top-2.5 left-0 bg-[#FFFBE6] px-1 font-bold text-gray-600">Meals</span>
+                        <div className="mt-2 space-y-2">
+                            <div className="flex items-center gap-2">
+                                <label className="text-[10px]">Preference:</label>
+                                <select
+                                    value={foundPassenger.mealPreference || 'STANDARD'}
+                                    onChange={(e) => {
+                                        const targetPassengerId = selectedPassengerForSeat || foundPassenger?.id;
+                                        updatePassengerDetails(foundPassenger.pnr, { mealPreference: e.target.value }, targetPassengerId);
+                                    }}
+                                    className="border border-[#7F9DB9] px-2 py-1 text-[10px] bg-white disabled:bg-gray-100"
+                                    disabled={isFlightClosed}
+                                >
+                                    <option value="STANDARD">Standard</option>
+                                    <option value="VEGETARIAN">Vegetarian</option>
+                                    <option value="VEGAN">Vegan</option>
+                                    <option value="KOSHER">Kosher</option>
+                                    <option value="HALAL">Halal</option>
+                                    <option value="CHILD">Child Meal</option>
+                                    <option value="DIABETIC">Diabetic</option>
+                                </select>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <label className="text-[10px]">Dietary:</label>
+                                <input
+                                    type="text"
+                                    value={foundPassenger.dietaryRequirements || ''}
+                                    onChange={(e) => {
+                                        const targetPassengerId = selectedPassengerForSeat || foundPassenger?.id;
+                                        updatePassengerDetails(foundPassenger.pnr, { dietaryRequirements: e.target.value }, targetPassengerId);
+                                    }}
+                                    placeholder="Requirements"
+                                    className="flex-1 border border-[#7F9DB9] px-1 text-[10px] disabled:bg-gray-100"
+                                    disabled={isFlightClosed}
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Services */}
+                    <div className="border-t border-[#D4D0C8] pt-2 relative">
+                        <span className="absolute -top-2.5 left-0 bg-[#FFFBE6] px-1 font-bold text-gray-600">Services</span>
+                        <div className="mt-2 space-y-1">
+                            <label className="flex items-center gap-2 text-[10px] cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={foundPassenger.wifiRequested || false}
+                                    onChange={(e) => {
+                                        const targetPassengerId = selectedPassengerForSeat || foundPassenger?.id;
+                                        updatePassengerDetails(foundPassenger.pnr, { wifiRequested: e.target.checked }, targetPassengerId);
+                                    }}
+                                    disabled={isFlightClosed}
+                                    className="w-3 h-3"
+                                />
+                                <span>Wi-Fi</span>
+                            </label>
+                            <label className="flex items-center gap-2 text-[10px] cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={foundPassenger.entertainmentRequested || false}
+                                    onChange={(e) => {
+                                        const targetPassengerId = selectedPassengerForSeat || foundPassenger?.id;
+                                        updatePassengerDetails(foundPassenger.pnr, { entertainmentRequested: e.target.checked }, targetPassengerId);
+                                    }}
+                                    disabled={isFlightClosed}
+                                    className="w-3 h-3"
+                                />
+                                <span>Entertainment</span>
+                            </label>
+                            <label className="flex items-center gap-2 text-[10px] cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={foundPassenger.extraLegroom || false}
+                                    onChange={(e) => {
+                                        const targetPassengerId = selectedPassengerForSeat || foundPassenger?.id;
+                                        updatePassengerDetails(foundPassenger.pnr, { extraLegroom: e.target.checked }, targetPassengerId);
+                                    }}
+                                    disabled={isFlightClosed}
+                                    className="w-3 h-3"
+                                />
+                                <span>Extra Legroom</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Baggage Tracking */}
+                {foundPassenger.bagCount > 0 && (
+                    <div className="border-t border-[#D4D0C8] pt-2 relative px-4">
+                        <span className="absolute -top-2.5 left-4 bg-[#FFFBE6] px-1 font-bold text-gray-600">Baggage Tracking</span>
+                        <div className="mt-2 grid grid-cols-2 gap-4">
+                            <div className="flex items-center gap-2">
+                                <label className="text-[10px] font-bold">Status:</label>
+                                <select
+                                    value={foundPassenger.bagStatus || 'CHECKED'}
+                                    onChange={(e) => {
+                                        const targetPassengerId = selectedPassengerForSeat || foundPassenger?.id;
+                                        updatePassengerDetails(foundPassenger.pnr, { bagStatus: e.target.value as any }, targetPassengerId);
+                                    }}
+                                    className="border border-[#7F9DB9] px-2 py-1 text-[10px] bg-white disabled:bg-gray-100"
+                                    disabled={isFlightClosed}
+                                >
+                                    <option value="CHECKED">Checked</option>
+                                    <option value="LOADED">Loaded</option>
+                                    <option value="UNLOADED">Unloaded</option>
+                                    <option value="LOST">Lost</option>
+                                </select>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <label className="text-[10px] font-bold">Location:</label>
+                                <input
+                                    type="text"
+                                    value={foundPassenger.bagLocation || ''}
+                                    onChange={(e) => {
+                                        const targetPassengerId = selectedPassengerForSeat || foundPassenger?.id;
+                                        updatePassengerDetails(foundPassenger.pnr, { bagLocation: e.target.value }, targetPassengerId);
+                                    }}
+                                    placeholder="Bag location"
+                                    className="flex-1 border border-[#7F9DB9] px-1 text-[10px] disabled:bg-gray-100"
+                                    disabled={isFlightClosed}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                )}
                 
                 {/* Document Info (Simulated) */}
                 <div className="mt-2 border p-2 bg-white text-[10px] font-mono h-16 overflow-y-auto">
