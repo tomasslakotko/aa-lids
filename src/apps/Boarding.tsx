@@ -71,6 +71,23 @@ export const BoardingApp = () => {
       }
     }
   }, [selectedFlightId, flights]);
+
+  // Track flight status changes and notify passengers when boarding starts
+  const prevFlightStatusRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (selectedFlight && selectedFlight.status === 'BOARDING' && prevFlightStatusRef.current !== 'BOARDING') {
+      // Boarding just started - notify all passengers on this flight
+      const flightPassengers = passengers.filter(p => p.flightId === selectedFlight.id);
+      flightPassengers.forEach(pax => {
+        const message = `Boarding started for ${selectedFlight.flightNumber} to ${selectedFlight.destinationCity || selectedFlight.destination}. Gate: ${selectedFlight.gate}`;
+        addPassengerNotification(pax.pnr, message);
+      });
+    }
+    if (selectedFlight) {
+      prevFlightStatusRef.current = selectedFlight.status;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedFlight?.status, selectedFlight?.id, passengers]);
   const deboardPassenger = useAirportStore((state) => state.deboardPassenger);
   const updateFlightStatus = useAirportStore((state) => state.updateFlightStatus);
   const updateGateMessage = useAirportStore((state) => state.updateGateMessage);
@@ -78,6 +95,28 @@ export const BoardingApp = () => {
   const addNoRecPassenger = useAirportStore((state) => state.addNoRecPassenger);
 
   const selectedFlight = flights.find(f => f.id === selectedFlightId);
+  
+  // Helper function to add notification for passenger
+  const addPassengerNotification = (pnr: string, message: string) => {
+    try {
+      const NOTIFY_KEY = 'mobile-notifications-v1';
+      const saved = localStorage.getItem(NOTIFY_KEY);
+      const notifications = saved ? JSON.parse(saved) : [];
+      const timestamp = new Date().toLocaleTimeString();
+      const fullMessage = `${timestamp} · ${message}`;
+      // Add notification if not already present
+      if (!notifications.includes(fullMessage)) {
+        notifications.unshift(fullMessage);
+        localStorage.setItem(NOTIFY_KEY, JSON.stringify(notifications.slice(0, 50)));
+      }
+      // Try to send browser notification if permission granted
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('Flight Update', { body: message });
+      }
+    } catch (error) {
+      console.error('Error adding notification:', error);
+    }
+  };
   
   // Filter Pax for Flight
   const flightPassengers = useMemo(() => 
@@ -221,8 +260,14 @@ export const BoardingApp = () => {
     const pax = passengers.find(p => p.id === selectedPaxId);
     if (pax) {
         const newSeat = prompt('Enter Seat Assignment:', '10A');
-        if (newSeat) {
-            updatePassengerDetails(pax.pnr, { seat: newSeat, status: 'CHECKED_IN' });
+        if (newSeat && newSeat.trim()) {
+            const seat = newSeat.trim().toUpperCase();
+            updatePassengerDetails(pax.pnr, { seat: seat, status: 'CHECKED_IN' });
+            // Send notification to passenger about seat assignment
+            const flight = flights.find(f => f.id === pax.flightId);
+            const flightInfo = flight ? `${flight.flightNumber} to ${flight.destinationCity || flight.destination}` : 'your flight';
+            addPassengerNotification(pax.pnr, `Seat assigned: ${seat} on ${flightInfo}`);
+            alert(`Seat ${seat} assigned. Notification sent to passenger.`);
         }
     }
   };
