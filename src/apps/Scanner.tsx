@@ -309,7 +309,7 @@ export const ScannerApp = () => {
       selectedFlightId: selectedFlightId
     });
     
-    const result = boardPassenger(found.pnr);
+    const result = boardPassenger(found.pnr, found.id);
     console.log('Board result:', result);
     
     if (result) {
@@ -766,7 +766,7 @@ export const ScannerApp = () => {
                   // Acknowledge and board the passenger
                   const found = passengers.find(p => p.pnr === commentPassenger.pnr);
                   if (found) {
-                    const result = boardPassenger(found.pnr);
+                    const result = boardPassenger(found.pnr, found.id);
                     if (result) {
                       setScanError(null);
                       setLastScanned({ 

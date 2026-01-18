@@ -121,7 +121,7 @@ interface AirportStore {
   loadBag: (pnr: string) => void;
   unloadBag: (pnr: string) => void;
   addNoRecPassenger: (lastName: string, firstName: string, flightId: string) => void;
-  boardPassenger: (pnr: string) => boolean;
+  boardPassenger: (pnr: string, passengerId?: string) => boolean;
   createBooking: (pnr: string, lastName: string, firstName: string, flightId: string, passengerType?: PassengerType, staffId?: string, userEmail?: string) => void;
   addLog: (message: string, source: string, type?: LogEntry['type']) => void;
   resetSimulation: () => void;
@@ -1013,17 +1013,22 @@ export const useAirportStore = create<AirportStore>()(
         get().syncToDatabase().catch(() => {});
       },
 
-      boardPassenger: (pnr) => {
+      boardPassenger: (pnr, passengerId) => {
         const state = get();
-        const passenger = state.passengers.find(p => p.pnr === pnr);
+        // If passengerId is provided, find by ID; otherwise find by PNR (backward compatibility)
+        const passenger = passengerId 
+          ? state.passengers.find(p => p.id === passengerId && p.pnr === pnr)
+          : state.passengers.find(p => p.pnr === pnr);
+        
         if (!passenger) {
-          console.error(`[boardPassenger] Passenger not found: ${pnr}`);
-          get().addLog(`Cannot board passenger - PNR ${pnr} not found`, 'BOARDING', 'WARNING');
+          console.error(`[boardPassenger] Passenger not found: ${pnr}${passengerId ? ` (ID: ${passengerId})` : ''}`);
+          get().addLog(`Cannot board passenger - PNR ${pnr}${passengerId ? ` (ID: ${passengerId})` : ''} not found`, 'BOARDING', 'WARNING');
           return false;
         }
         
         console.log(`[boardPassenger] Attempting to board:`, {
           pnr,
+          passengerId: passenger.id,
           name: `${passenger.lastName}, ${passenger.firstName}`,
           status: passenger.status,
           flightId: passenger.flightId
@@ -1032,6 +1037,7 @@ export const useAirportStore = create<AirportStore>()(
         if (passenger.status !== 'CHECKED_IN') {
           console.error(`[boardPassenger] Passenger not checked in:`, {
             pnr,
+            passengerId: passenger.id,
             status: passenger.status,
             expected: 'CHECKED_IN'
           });
@@ -1040,12 +1046,17 @@ export const useAirportStore = create<AirportStore>()(
         }
 
         set((state) => ({
-          passengers: state.passengers.map(p => 
-            p.pnr === pnr ? { ...p, status: 'BOARDED' } : p
-          )
+          passengers: state.passengers.map(p => {
+            // If passengerId is provided, update only that specific passenger
+            if (passengerId) {
+              return p.id === passengerId ? { ...p, status: 'BOARDED' } : p;
+            }
+            // Otherwise, update first passenger with matching PNR (backward compatibility)
+            return p.pnr === pnr && p.id === passenger.id ? { ...p, status: 'BOARDED' } : p;
+          })
         }));
-        get().addLog(`Passenger ${passenger.lastName} (${pnr}) boarded`, 'BOARDING', 'SUCCESS');
-        console.log(`[boardPassenger] Successfully boarded: ${pnr}`);
+        get().addLog(`Passenger ${passenger.lastName} (${pnr})${passengerId ? ` (ID: ${passenger.id})` : ''} boarded`, 'BOARDING', 'SUCCESS');
+        console.log(`[boardPassenger] Successfully boarded: ${pnr}${passengerId ? ` (ID: ${passenger.id})` : ''}`);
         
         // Sync to database
         if (get().isDatabaseReady) {

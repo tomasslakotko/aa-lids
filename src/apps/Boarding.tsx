@@ -37,7 +37,7 @@ export const BoardingApp = () => {
   const [showBriefsheet, setShowBriefsheet] = useState(false);
   const [showScannerQR, setShowScannerQR] = useState(false);
   const [showCommentModal, setShowCommentModal] = useState(false);
-  const [commentPassenger, setCommentPassenger] = useState<{ name: string; pnr: string; comment: string } | null>(null);
+  const [commentPassenger, setCommentPassenger] = useState<{ name: string; pnr: string; comment: string; passengerId?: string } | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
@@ -223,30 +223,39 @@ export const BoardingApp = () => {
     }
   };
 
-  const handleBoardPax = async (pnr: string) => {
+  const handleBoardPax = async (pnr: string, passengerId?: string) => {
+    // Find passenger by ID if provided, otherwise by PNR
+    const pax = passengerId 
+      ? passengers.find(p => p.id === passengerId && p.pnr === pnr)
+      : passengers.find(p => p.pnr === pnr);
+    
+    if (!pax) {
+      alert(`Passenger with PNR ${pnr}${passengerId ? ` (ID: ${passengerId})` : ''} not found.`);
+      return;
+    }
+    
     // Check if passenger has a boarding comment
-    const pax = passengers.find(p => p.pnr === pnr);
-    if (pax && pax.boardingComment && pax.boardingComment.trim()) {
+    if (pax.boardingComment && pax.boardingComment.trim()) {
       // Show comment modal before boarding
       setCommentPassenger({
         name: `${pax.lastName}, ${pax.firstName}`,
         pnr: pax.pnr,
-        comment: pax.boardingComment
+        comment: pax.boardingComment,
+        passengerId: pax.id
       });
       setShowCommentModal(true);
       return;
     }
     
     // No comment, board directly
-    console.log('[Boarding] Attempting to board passenger with PNR:', pnr);
-    const result = boardPassenger(pnr);
+    console.log('[Boarding] Attempting to board passenger with PNR:', pnr, 'ID:', passengerId || pax.id);
+    const result = boardPassenger(pnr, passengerId || pax.id);
     console.log('[Boarding] Board result:', result);
     if (!result) {
-      const passenger = passengers.find(p => p.pnr === pnr);
-      if (passenger) {
-        alert(`Cannot board passenger: Status is ${passenger.status}. Passenger must be CHECKED_IN to board.`);
+      if (pax.status !== 'CHECKED_IN') {
+        alert(`Cannot board passenger: Status is ${pax.status}. Passenger must be CHECKED_IN to board.`);
       } else {
-        alert(`Passenger with PNR ${pnr} not found.`);
+        alert(`Failed to board passenger ${pax.lastName}, ${pax.firstName}.`);
       }
     } else {
       // Boarding successful - send notification
@@ -473,7 +482,7 @@ export const BoardingApp = () => {
     }
     
     // Auto-board the passenger
-    const result = boardPassenger(found.pnr);
+    const result = boardPassenger(found.pnr, found.id);
     if (result) {
       setSelectedPaxId(found.id);
       setScanError(null);
@@ -978,7 +987,7 @@ export const BoardingApp = () => {
                              </span>
                            ) : null}
                            <button 
-                             onClick={(e) => { e.stopPropagation(); handleBoardPax(p.pnr); }}
+                             onClick={(e) => { e.stopPropagation(); handleBoardPax(p.pnr, p.id); }}
                              className="bg-green-600 text-white px-2 py-0.5 rounded text-[9px] hover:bg-green-700"
                            >
                              BOARD
@@ -1148,7 +1157,7 @@ export const BoardingApp = () => {
               <button
                 onClick={async () => {
                   // Acknowledge and board the passenger
-                  const result = boardPassenger(commentPassenger.pnr);
+                  const result = boardPassenger(commentPassenger.pnr, commentPassenger.passengerId);
                   if (result) {
                     // Boarding successful - send notification
                     await addPassengerNotification(commentPassenger.pnr, 'HAVE A SAFE FLIGHT');
