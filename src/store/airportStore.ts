@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { initializeDatabase, loadAllData, saveAllData, saveFlights } from '../services/database';
+import { initializeDatabase, loadAllData, saveAllData, saveFlights, saveFlightDirect } from '../services/database';
 import { setupRealtimeSubscriptions, setLocalUpdateFlag } from '../services/realtime';
 
 // --- Types ---
@@ -682,15 +682,13 @@ export const useAirportStore = create<AirportStore>()(
           flights: [...state.flights, flight]
         }));
         get().addLog(`Flight ${flight.flightNumber} created`, 'SYSTEM', 'SUCCESS');
-        // Immediately save the new flight to database
-        if (get().isDatabaseReady) {
-          try {
-            await saveFlights([flight]);
-            get().addLog(`Flight ${flight.flightNumber} saved to database`, 'SYSTEM', 'SUCCESS');
-          } catch (error) {
-            console.error('Failed to save new flight to database:', error);
-            get().addLog(`Failed to save flight ${flight.flightNumber} to database`, 'SYSTEM', 'ERROR');
-          }
+        // Immediately save the new flight to database using direct POST
+        try {
+          await saveFlightDirect(flight);
+          get().addLog(`Flight ${flight.flightNumber} saved to database`, 'SYSTEM', 'SUCCESS');
+        } catch (error: any) {
+          console.error('Failed to save new flight to database:', error);
+          get().addLog(`Failed to save flight ${flight.flightNumber}: ${error?.message || 'Unknown error'}`, 'SYSTEM', 'ERROR');
         }
       },
 

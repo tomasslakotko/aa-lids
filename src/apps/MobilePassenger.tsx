@@ -228,12 +228,20 @@ export const MobilePassengerApp = () => {
   }, [bookingConnectionFlightId, flights]);
 
   const airportOptions = useMemo(() => {
-    const all = new Set<string>();
-    flights.forEach((f) => {
-      all.add(f.origin);
-      all.add(f.destination);
-    });
-    return Array.from(all).sort();
+    try {
+      const all = new Set<string>();
+      if (flights && Array.isArray(flights)) {
+        flights.forEach((f) => {
+          if (f?.origin) all.add(f.origin);
+          if (f?.destination) all.add(f.destination);
+        });
+      }
+      const sorted = Array.from(all).sort();
+      return sorted.length > 0 ? sorted : ['RIX', 'FRA', 'AMS', 'CDG', 'LHR', 'MUC', 'ARN', 'CPH', 'OSL', 'HEL'];
+    } catch (error) {
+      console.error('Error computing airport options:', error);
+      return ['RIX', 'FRA', 'AMS', 'CDG', 'LHR', 'MUC', 'ARN', 'CPH', 'OSL', 'HEL'];
+    }
   }, [flights]);
 
   useEffect(() => {
@@ -452,24 +460,39 @@ export const MobilePassengerApp = () => {
   };
 
   const connectionOptions = useMemo(() => {
-    if (!searchOrigin || !searchDestination) return [];
-    const leg1 = flightsForDate.filter((f) => f.origin === searchOrigin);
-    const options: Array<{ leg1: typeof flights[0]; leg2: typeof flights[0] }> = [];
-    leg1.forEach((l1) => {
-      const l1Dep = toMinutes(l1);
-      if (l1Dep === null) return;
-      const l1Arr = l1Dep + estimateDurationMinutes(l1);
-      const leg2 = flightsForDate.filter((f) => f.origin === l1.destination && f.destination === searchDestination);
-      leg2.forEach((l2) => {
-        const l2Dep = toMinutes(l2);
-        if (l2Dep === null) return;
-        const connectionTime = l2Dep - l1Arr;
-        if (connectionTime >= 90 && connectionTime <= 480) {
-          options.push({ leg1: l1, leg2: l2 });
+    try {
+      if (!searchOrigin || !searchDestination) return [];
+      if (!flightsForDate || !Array.isArray(flightsForDate)) return [];
+      const leg1 = flightsForDate.filter((f) => f && f.origin === searchOrigin);
+      const options: Array<{ leg1: typeof flights[0]; leg2: typeof flights[0] }> = [];
+      leg1.forEach((l1) => {
+        try {
+          if (!l1 || !l1.destination) return;
+          const l1Dep = toMinutes(l1);
+          if (l1Dep === null) return;
+          const l1Arr = l1Dep + estimateDurationMinutes(l1);
+          const leg2 = flightsForDate.filter((f) => f && f.origin === l1.destination && f.destination === searchDestination);
+          leg2.forEach((l2) => {
+            try {
+              const l2Dep = toMinutes(l2);
+              if (l2Dep === null) return;
+              const connectionTime = l2Dep - l1Arr;
+              if (connectionTime >= 90 && connectionTime <= 480) {
+                options.push({ leg1: l1, leg2: l2 });
+              }
+            } catch (err) {
+              console.error('Error processing leg2:', err);
+            }
+          });
+        } catch (err) {
+          console.error('Error processing leg1:', err);
         }
       });
-    });
-    return options;
+      return options;
+    } catch (error) {
+      console.error('Error computing connection options:', error);
+      return [];
+    }
   }, [flightsForDate, searchOrigin, searchDestination]);
 
   const estimateDurationMinutes = (flight?: typeof selectedFlight) => {
@@ -479,11 +502,21 @@ export const MobilePassengerApp = () => {
   };
 
   const toDateTime = (flight?: typeof selectedFlight) => {
-    if (!flight?.date || !flight?.std) return null;
-    const [y, m, d] = flight.date.split('-').map(Number);
-    const [hh, mm] = flight.std.split(':').map(Number);
-    const dt = new Date(y, m - 1, d, hh, mm, 0);
-    return dt;
+    try {
+      if (!flight?.date || !flight?.std) return null;
+      const dateParts = flight.date.split('-');
+      const timeParts = flight.std.split(':');
+      if (dateParts.length !== 3 || timeParts.length < 2) return null;
+      const [y, m, d] = dateParts.map(Number);
+      const [hh, mm] = timeParts.map(Number);
+      if (isNaN(y) || isNaN(m) || isNaN(d) || isNaN(hh) || isNaN(mm)) return null;
+      const dt = new Date(y, m - 1, d, hh, mm, 0);
+      if (isNaN(dt.getTime())) return null;
+      return dt;
+    } catch (error) {
+      console.error('Error parsing date/time:', error);
+      return null;
+    }
   };
 
   const farePricing = useMemo(() => {
@@ -1428,8 +1461,12 @@ export const MobilePassengerApp = () => {
       )}
 
       {airportPicker.open && airportPicker.type && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-end">
-          <div className="bg-white w-full rounded-t-2xl p-4 max-h-[70vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-end" onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            setAirportPicker({ open: false, type: null });
+          }
+        }}>
+          <div className="bg-white w-full rounded-t-2xl p-4 max-h-[70vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
               <div className="text-lg font-semibold">
                 Select {airportPicker.type === 'origin' ? 'Departure' : 'Arrival'}
@@ -1442,7 +1479,7 @@ export const MobilePassengerApp = () => {
               </button>
             </div>
             <div className="grid grid-cols-3 gap-2">
-              {airportOptions.map((code) => (
+              {airportOptions.length > 0 ? airportOptions.map((code) => (
                 <button
                   key={`${airportPicker.type}-${code}`}
                   className={clsx(
@@ -1454,18 +1491,29 @@ export const MobilePassengerApp = () => {
                       ? 'border-blue-500 bg-blue-50'
                       : ''
                   )}
-                  onClick={() => {
-                    if (airportPicker.type === 'origin') {
-                      setSearchOrigin(code);
-                    } else {
-                      setSearchDestination(code);
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    try {
+                      if (airportPicker.type === 'origin') {
+                        setSearchOrigin(code);
+                      } else if (airportPicker.type === 'destination') {
+                        setSearchDestination(code);
+                      }
+                      setAirportPicker({ open: false, type: null });
+                    } catch (error) {
+                      console.error('Error selecting airport:', error);
+                      setAirportPicker({ open: false, type: null });
                     }
-                    setAirportPicker({ open: false, type: null });
                   }}
                 >
                   {code}
                 </button>
-              ))}
+              )) : (
+                <div className="col-span-3 text-center text-slate-500 py-4">
+                  No airports available
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -168,6 +168,46 @@ async function loadFlights(): Promise<Flight[]> {
   })) as Flight[];
 }
 
+// Save a single flight directly to Supabase (for new flights)
+export async function saveFlightDirect(flight: Flight): Promise<void> {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    throw new Error('Supabase not configured');
+  }
+  
+  const flightData = {
+    id: flight.id,
+    flight_number: flight.flightNumber,
+    origin: flight.origin,
+    destination: flight.destination,
+    origin_city: flight.originCity || null,
+    destination_city: flight.destinationCity || null,
+    std: flight.std,
+    etd: flight.etd || null,
+    date: flight.date || null,
+    gate: flight.gate || null,
+    status: flight.status,
+    aircraft: flight.aircraft || null,
+    registration: flight.registration || null,
+    gate_message: flight.gateMessage || null
+  };
+  
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/flights`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      'Prefer': 'return=representation'
+    },
+    body: JSON.stringify(flightData)
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to save flight: HTTP ${response.status} - ${errorText}`);
+  }
+}
+
 export async function saveFlights(flights: Flight[]) {
   try {
     if (flights.length === 0) return;
@@ -191,14 +231,22 @@ export async function saveFlights(flights: Flight[]) {
     
     // Use UPSERT to avoid duplicate key errors
     // Process in smaller batches to avoid overwhelming the API
+    const errors: Error[] = [];
     for (let i = 0; i < flightsData.length; i += 50) {
       const batch = flightsData.slice(i, i + 50);
-      await Promise.all(
-        batch.map(flight => supabaseUpsert('flights', flight, 'id').catch(err => {
-          console.warn(`Failed to upsert flight ${flight.id}:`, err.message);
-          // Continue with other flights even if one fails
-        }))
+      const results = await Promise.allSettled(
+        batch.map(flight => supabaseUpsert('flights', flight, 'id'))
       );
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          const error = result.reason;
+          console.error(`Failed to upsert flight ${batch[index].id}:`, error);
+          errors.push(new Error(`Flight ${batch[index].flight_number} (${batch[index].id}): ${error?.message || 'Unknown error'}`));
+        }
+      });
+    }
+    if (errors.length > 0) {
+      throw new Error(`Failed to save ${errors.length} flight(s): ${errors.map(e => e.message).join('; ')}`);
     }
   } catch (error) {
     console.error('Error saving flights:', error);

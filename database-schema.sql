@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS flights (
   destination_city TEXT,
   std TEXT NOT NULL,
   etd TEXT,
+  date TEXT,
   gate TEXT,
   status TEXT NOT NULL,
   aircraft TEXT,
