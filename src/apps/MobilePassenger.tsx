@@ -311,6 +311,18 @@ export const MobilePassengerApp = () => {
     lastFlightRef.current = { status: selectedFlight.status, gate: selectedFlight.gate };
   }, [selectedPassenger, selectedFlight]);
 
+  // Request notification permission when notifications screen is opened
+  useEffect(() => {
+    if (screen === 'notifications' && 'Notification' in window && Notification.permission === 'default') {
+      // Request permission when user opens notifications screen
+      Notification.requestPermission().then((permission) => {
+        if (permission === 'granted') {
+          setNotificationsEnabled(true);
+        }
+      });
+    }
+  }, [screen]);
+
   const handleAddReservation = () => {
     setError('');
     setSuccess('');
@@ -1481,22 +1493,30 @@ export const MobilePassengerApp = () => {
             <h2 className="font-semibold mb-3">Notifications</h2>
             <div className="flex items-center justify-between text-sm text-slate-600 mb-3">
               <span>Enable push alerts</span>
-              <button
-                className={clsx(
-                  'h-6 w-12 rounded-full relative transition',
-                  notificationsEnabled ? 'bg-green-500' : 'bg-slate-200'
+              <div className="flex items-center gap-2">
+                {'Notification' in window && Notification.permission === 'default' && (
+                  <span className="text-xs text-orange-600">Click to enable</span>
                 )}
-                onClick={async () => {
-                  if (!notificationsEnabled && 'Notification' in window) {
-                    const permission = await Notification.requestPermission();
-                    if (permission !== 'granted') {
-                      setNotificationsEnabled(false);
-                      return;
+                {'Notification' in window && Notification.permission === 'denied' && (
+                  <span className="text-xs text-red-600">Blocked in browser</span>
+                )}
+                <button
+                  className={clsx(
+                    'h-6 w-12 rounded-full relative transition',
+                    notificationsEnabled ? 'bg-green-500' : 'bg-slate-200'
+                  )}
+                  onClick={async () => {
+                    if (!notificationsEnabled && 'Notification' in window) {
+                      const permission = await Notification.requestPermission();
+                      if (permission !== 'granted') {
+                        setNotificationsEnabled(false);
+                        alert('Notification permission denied. Please enable it in your browser settings.');
+                        return;
+                      }
                     }
-                  }
-                  setNotificationsEnabled((prev) => !prev);
-                }}
-              >
+                    setNotificationsEnabled((prev) => !prev);
+                  }}
+                >
                 <span
                   className={clsx(
                     'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition',
@@ -1504,6 +1524,7 @@ export const MobilePassengerApp = () => {
                   )}
                 />
               </button>
+            </div>
             </div>
             {notifications.length === 0 && <div className="text-sm text-slate-500">No updates yet.</div>}
             <div className="space-y-2">
