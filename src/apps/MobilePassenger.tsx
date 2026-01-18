@@ -15,8 +15,10 @@ import QRCode from 'react-qr-code';
 import clsx from 'clsx';
 import { useAirportStore } from '../store/airportStore';
 import { initializeAirportDatabase } from '../store/airportStore';
+import { loginUser, registerUser, getUserByEmail, updateUserProfile, type User } from '../services/database';
 
 type Screen =
+  | 'login'
   | 'explore'
   | 'book'
   | 'trips'
@@ -36,6 +38,7 @@ const NOTIFY_KEY = 'mobile-notifications-v2'; // Updated to v2 for PNR-based str
 const NOTIFY_ENABLED_KEY = 'mobile-notifications-enabled-v1';
 const PROFILE_KEY = 'mobile-profile-v1';
 const RECENT_SEARCH_KEY = 'mobile-recent-search-v1';
+const AUTH_KEY = 'mobile-auth-v1';
 
 const generatePnr = () => Math.random().toString(36).substring(2, 8).toUpperCase();
 
@@ -51,7 +54,14 @@ export const MobilePassengerApp = () => {
   const loadFromDatabase = useAirportStore((state) => state.loadFromDatabase);
   const isDatabaseReady = useAirportStore((state) => state.isDatabaseReady);
 
-  const [screen, setScreen] = useState<Screen>('explore');
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginName, setLoginName] = useState('');
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [loginError, setLoginError] = useState('');
+  const [screen, setScreen] = useState<Screen>('login');
   const [trips, setTrips] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem(TRIPS_KEY);
@@ -135,6 +145,37 @@ export const MobilePassengerApp = () => {
 
   useEffect(() => {
     initializeAirportDatabase();
+    
+    // Check for saved user session
+    const checkSavedUser = async () => {
+      try {
+        const saved = localStorage.getItem(AUTH_KEY);
+        if (saved) {
+          const auth = JSON.parse(saved);
+          if (auth.userId && auth.email) {
+            // Try to get user from database
+            const user = await getUserByEmail(auth.email);
+            if (user) {
+              setCurrentUser(user);
+              setIsLoggedIn(true);
+              setScreen('explore');
+              // Update profile from user data
+              if (user.name || user.email || user.skymiles) {
+                setProfile({
+                  name: user.name || '',
+                  email: user.email || '',
+                  skymiles: user.skymiles || ''
+                });
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error checking saved user:', error);
+      }
+    };
+    
+    checkSavedUser();
     
     // Migrate old notifications format (v1) to new format (v2) if needed
     try {
@@ -434,6 +475,93 @@ export const MobilePassengerApp = () => {
     }
   }, [screen]);
 
+  // Protect routes - redirect to login if not authenticated
+  useEffect(() => {
+    if (!isLoggedIn && screen !== 'login') {
+      setScreen('login');
+    }
+  }, [isLoggedIn, screen]);
+
+  const handleLogin = async () => {
+    setLoginError('');
+    if (!loginEmail || !loginPassword) {
+      setLoginError('Please enter email and password');
+      return;
+    }
+    
+    try {
+      const user = await loginUser(loginEmail, loginPassword);
+      setCurrentUser(user);
+      setIsLoggedIn(true);
+      
+      // Save session
+      localStorage.setItem(AUTH_KEY, JSON.stringify({
+        userId: user.id,
+        email: user.email
+      }));
+      
+      // Update profile from user data
+      setProfile({
+        name: user.name || '',
+        email: user.email || '',
+        skymiles: user.skymiles || ''
+      });
+      
+      setScreen('explore');
+      setLoginEmail('');
+      setLoginPassword('');
+      setLoginError('');
+    } catch (error: any) {
+      console.error('Login error:', error);
+      setLoginError(error.message || 'Failed to login. Please check your credentials.');
+    }
+  };
+
+  const handleRegister = async () => {
+    setLoginError('');
+    if (!loginEmail || !loginPassword) {
+      setLoginError('Please enter email and password');
+      return;
+    }
+    
+    try {
+      const user = await registerUser(loginEmail, loginPassword, loginName || undefined);
+      setCurrentUser(user);
+      setIsLoggedIn(true);
+      
+      // Save session
+      localStorage.setItem(AUTH_KEY, JSON.stringify({
+        userId: user.id,
+        email: user.email
+      }));
+      
+      // Update profile from user data
+      setProfile({
+        name: user.name || loginName || '',
+        email: user.email || '',
+        skymiles: user.skymiles || ''
+      });
+      
+      setScreen('explore');
+      setLoginEmail('');
+      setLoginPassword('');
+      setLoginName('');
+      setIsRegistering(false);
+      setLoginError('');
+    } catch (error: any) {
+      console.error('Register error:', error);
+      setLoginError(error.message || 'Failed to register. Email may already be in use.');
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem(AUTH_KEY);
+    setCurrentUser(null);
+    setIsLoggedIn(false);
+    setScreen('login');
+    setProfile({ name: '', email: '', skymiles: '' });
+  };
+
   const handleAddReservation = () => {
     setError('');
     setSuccess('');
@@ -672,6 +800,11 @@ export const MobilePassengerApp = () => {
   ] as const;
 
   const renderHeader = () => {
+    // Don't show header on login screen
+    if (screen === 'login') {
+      return null;
+    }
+    
     if (screen === 'account') {
       return (
         <div className="bg-gradient-to-b from-slate-900 to-slate-800 text-white px-4 pt-5 pb-4">
@@ -726,7 +859,7 @@ export const MobilePassengerApp = () => {
 
     const title =
       screen === 'explore'
-        ? `Welcome, ${selectedPassenger?.firstName || 'Traveler'}`
+        ? `Welcome, ${currentUser?.name?.split(' ')[0] || selectedPassenger?.firstName || 'Traveler'}`
         : screen === 'book'
         ? 'Book'
         : screen === 'trips'
@@ -754,6 +887,116 @@ export const MobilePassengerApp = () => {
 
       {error && <div className="mx-4 mt-4 p-3 bg-red-100 text-red-700 rounded-lg">{error}</div>}
       {success && <div className="mx-4 mt-4 p-3 bg-green-100 text-green-700 rounded-lg">{success}</div>}
+
+      {screen === 'login' && (
+        <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-blue-900 to-blue-600">
+          <div className="w-full max-w-md">
+            <div className="bg-white rounded-2xl shadow-xl p-8 space-y-6">
+              <div className="text-center">
+                <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-full mb-4">
+                  <Plane className="w-8 h-8 text-white" />
+                </div>
+                <h1 className="text-3xl font-bold text-slate-900 mb-2">
+                  {isRegistering ? 'Create Account' : 'Welcome'}
+                </h1>
+                <p className="text-slate-600">
+                  {isRegistering ? 'Sign up for a new account' : 'Sign in to your account'}
+                </p>
+              </div>
+              
+              {loginError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                  {loginError}
+                </div>
+              )}
+              
+              <div className="space-y-4">
+                {isRegistering && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Full Name</label>
+                    <input
+                      type="text"
+                      value={loginName}
+                      onChange={(e) => setLoginName(e.target.value)}
+                      placeholder="John Doe"
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                )}
+                
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
+                  <input
+                    type="email"
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
+                    placeholder="your.email@example.com"
+                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        isRegistering ? handleRegister() : handleLogin();
+                      }
+                    }}
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Password</label>
+                  <input
+                    type="password"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    placeholder="Enter your password"
+                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        isRegistering ? handleRegister() : handleLogin();
+                      }
+                    }}
+                  />
+                </div>
+                
+                <button
+                  onClick={isRegistering ? handleRegister : handleLogin}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition-colors"
+                >
+                  {isRegistering ? 'Create Account' : 'Sign In'}
+                </button>
+                
+                <div className="text-center text-sm text-slate-600">
+                  {isRegistering ? (
+                    <>
+                      <p>Already have an account?</p>
+                      <button
+                        onClick={() => {
+                          setIsRegistering(false);
+                          setLoginError('');
+                        }}
+                        className="text-blue-600 font-semibold mt-1"
+                      >
+                        Sign in instead
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <p>Don't have an account?</p>
+                      <button
+                        onClick={() => {
+                          setIsRegistering(true);
+                          setLoginError('');
+                        }}
+                        className="text-blue-600 font-semibold mt-1"
+                      >
+                        Create one now
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {screen === 'explore' && (
         <div className="p-4 space-y-6">
@@ -1364,10 +1607,10 @@ export const MobilePassengerApp = () => {
         <div className="p-4 space-y-4">
           <div className="bg-indigo-700 text-white rounded-2xl p-4">
             <div className="text-lg font-semibold">
-              {profile.name || `${selectedPassenger?.firstName || 'Tomass'} ${selectedPassenger?.lastName || 'Lakotko'}`}
+              {currentUser?.name || profile.name || `${selectedPassenger?.firstName || 'User'} ${selectedPassenger?.lastName || ''}`}
             </div>
             <div className="text-sm text-indigo-200">
-              SkyMiles Member {profile.skymiles ? `· #${profile.skymiles}` : ''}
+              SkyMiles Member {currentUser?.skymiles || profile.skymiles ? `· #${currentUser?.skymiles || profile.skymiles}` : ''}
             </div>
             <div className="text-3xl font-semibold mt-2">0</div>
             <div className="text-xs text-indigo-200">Miles Available</div>
@@ -1395,15 +1638,43 @@ export const MobilePassengerApp = () => {
             <div className="flex gap-2">
               <button
                 className="flex-1 bg-blue-600 text-white font-semibold py-2 rounded-lg"
-                onClick={() => setSuccess('Profile saved.')}
+                onClick={async () => {
+                  if (!currentUser) {
+                    setError('Please log in to save profile');
+                    return;
+                  }
+                  try {
+                    const updatedUser = await updateUserProfile(currentUser.id, {
+                      name: profile.name,
+                      email: profile.email,
+                      skymiles: profile.skymiles
+                    });
+                    setCurrentUser(updatedUser);
+                    setSuccess('Profile saved.');
+                    setError('');
+                  } catch (error: any) {
+                    console.error('Error saving profile:', error);
+                    setError(error.message || 'Failed to save profile');
+                  }
+                }}
               >
                 Save
               </button>
               <button
                 className="flex-1 bg-slate-200 text-slate-700 font-semibold py-2 rounded-lg"
-                onClick={() => setProfile({ name: '', email: '', skymiles: '' })}
+                onClick={() => {
+                  if (currentUser) {
+                    setProfile({
+                      name: currentUser.name || '',
+                      email: currentUser.email || '',
+                      skymiles: currentUser.skymiles || ''
+                    });
+                  } else {
+                    setProfile({ name: '', email: '', skymiles: '' });
+                  }
+                }}
               >
-                Clear
+                Reset
               </button>
             </div>
           </div>
@@ -1432,6 +1703,12 @@ export const MobilePassengerApp = () => {
               ))}
             </div>
           </div>
+          <button
+            onClick={handleLogout}
+            className="w-full bg-red-600 text-white font-semibold py-3 rounded-lg mt-4"
+          >
+            Sign Out
+          </button>
         </div>
       )}
 
@@ -1773,24 +2050,26 @@ export const MobilePassengerApp = () => {
         </div>
       )}
 
-      <div className="fixed bottom-0 left-0 right-0 bg-slate-900 text-white px-2 py-2">
-        <div className="grid grid-cols-5 text-[10px]">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = screen === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => setScreen(item.id)}
-                className={clsx('flex flex-col items-center gap-1', isActive ? 'text-white' : 'text-slate-400')}
-              >
-                <Icon className="w-5 h-5" />
-                {item.label}
-              </button>
-            );
-          })}
+      {screen !== 'login' && (
+        <div className="fixed bottom-0 left-0 right-0 bg-slate-900 text-white px-2 py-2">
+          <div className="grid grid-cols-5 text-[10px]">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = screen === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setScreen(item.id)}
+                  className={clsx('flex flex-col items-center gap-1', isActive ? 'text-white' : 'text-slate-400')}
+                >
+                  <Icon className="w-5 h-5" />
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

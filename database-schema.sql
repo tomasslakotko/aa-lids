@@ -108,6 +108,20 @@ CREATE TABLE IF NOT EXISTS emails (
 );
 
 -- ============================================
+-- USERS TABLE (Mobile App Authentication)
+-- ============================================
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  name TEXT,
+  skymiles TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  last_login TIMESTAMP
+);
+
+-- ============================================
 -- INDEXES FOR PERFORMANCE
 -- ============================================
 CREATE INDEX IF NOT EXISTS idx_passengers_pnr ON passengers(pnr);
@@ -117,6 +131,7 @@ CREATE INDEX IF NOT EXISTS idx_logs_source ON logs(source);
 CREATE INDEX IF NOT EXISTS idx_emails_pnr ON emails(pnr);
 CREATE INDEX IF NOT EXISTS idx_vouchers_pnr ON vouchers(pnr);
 CREATE INDEX IF NOT EXISTS idx_complaints_pnr ON complaints(pnr);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
 -- ============================================
 -- VERIFICATION QUERIES (Optional - to check tables were created)

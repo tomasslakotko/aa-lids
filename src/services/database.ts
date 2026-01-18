@@ -522,3 +522,246 @@ export async function saveAllData(data: {
     throw error;
   }
 }
+
+// ============================================
+// USER AUTHENTICATION FUNCTIONS
+// ============================================
+
+// Simple hash function (for demo - in production use bcrypt)
+function simpleHash(password: string): string {
+  let hash = 0;
+  for (let i = 0; i < password.length; i++) {
+    const char = password.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return hash.toString();
+}
+
+export interface User {
+  id: string;
+  email: string;
+  name?: string;
+  skymiles?: string;
+  created_at?: string;
+  updated_at?: string;
+  last_login?: string;
+}
+
+// Register a new user
+export async function registerUser(email: string, password: string, name?: string): Promise<User> {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    throw new Error('Supabase not configured');
+  }
+
+  const userId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  const passwordHash = simpleHash(password);
+
+  const userData = {
+    id: userId,
+    email: email.toLowerCase().trim(),
+    password_hash: passwordHash,
+    name: name || null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+
+  try {
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/users`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify(userData)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      if (errorText.includes('duplicate key') || errorText.includes('unique constraint')) {
+        throw new Error('Email already registered');
+      }
+      throw new Error(`Failed to register user: ${response.status} - ${errorText}`);
+    }
+
+    const users = await response.json();
+    const user = users[0];
+    
+    // Return user without password hash
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      skymiles: user.skymiles,
+      created_at: user.created_at,
+      updated_at: user.updated_at,
+      last_login: user.last_login
+    };
+  } catch (error: any) {
+    console.error('Error registering user:', error);
+    throw error;
+  }
+}
+
+// Login user
+export async function loginUser(email: string, password: string): Promise<User> {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    throw new Error('Supabase not configured');
+  }
+
+  const passwordHash = simpleHash(password);
+  const emailLower = email.toLowerCase().trim();
+
+  try {
+    // Find user by email
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/users?email=eq.${encodeURIComponent(emailLower)}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to login: ${response.status}`);
+    }
+
+    const users = await response.json();
+    
+    if (users.length === 0) {
+      throw new Error('User not found');
+    }
+
+    const user = users[0];
+
+    // Verify password
+    if (user.password_hash !== passwordHash) {
+      throw new Error('Invalid password');
+    }
+
+    // Update last_login
+    await fetch(`${SUPABASE_URL}/rest/v1/users?id=eq.${user.id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify({
+        last_login: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+    });
+
+    // Return user without password hash
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      skymiles: user.skymiles,
+      created_at: user.created_at,
+      updated_at: user.updated_at,
+      last_login: new Date().toISOString()
+    };
+  } catch (error: any) {
+    console.error('Error logging in user:', error);
+    throw error;
+  }
+}
+
+// Get user by email
+export async function getUserByEmail(email: string): Promise<User | null> {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    throw new Error('Supabase not configured');
+  }
+
+  const emailLower = email.toLowerCase().trim();
+
+  try {
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/users?email=eq.${encodeURIComponent(emailLower)}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to get user: ${response.status}`);
+    }
+
+    const users = await response.json();
+    
+    if (users.length === 0) {
+      return null;
+    }
+
+    const user = users[0];
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      skymiles: user.skymiles,
+      created_at: user.created_at,
+      updated_at: user.updated_at,
+      last_login: user.last_login
+    };
+  } catch (error: any) {
+    console.error('Error getting user:', error);
+    throw error;
+  }
+}
+
+// Update user profile
+export async function updateUserProfile(userId: string, updates: { name?: string; skymiles?: string; email?: string }): Promise<User> {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    throw new Error('Supabase not configured');
+  }
+
+  const updateData: any = {
+    updated_at: new Date().toISOString()
+  };
+
+  if (updates.name !== undefined) updateData.name = updates.name;
+  if (updates.skymiles !== undefined) updateData.skymiles = updates.skymiles;
+  if (updates.email !== undefined) updateData.email = updates.email.toLowerCase().trim();
+
+  try {
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/users?id=eq.${userId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify(updateData)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to update user: ${response.status} - ${errorText}`);
+    }
+
+    const users = await response.json();
+    const user = users[0];
+    
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      skymiles: user.skymiles,
+      created_at: user.created_at,
+      updated_at: user.updated_at,
+      last_login: user.last_login
+    };
+  } catch (error: any) {
+    console.error('Error updating user:', error);
+    throw error;
+  }
+}
