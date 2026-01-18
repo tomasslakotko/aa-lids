@@ -45,8 +45,10 @@ export const BoardingApp = () => {
 
   const flights = useAirportStore((state) => state.flights);
   const passengers = useAirportStore((state) => state.passengers);
+  const emails = useAirportStore((state) => state.emails);
   const updatePassengerDetails = useAirportStore((state) => state.updatePassengerDetails);
   const boardPassenger = useAirportStore((state) => state.boardPassenger);
+  const sendEmailConfirmation = useAirportStore((state) => state.sendEmailConfirmation);
   const deboardPassenger = useAirportStore((state) => state.deboardPassenger);
   const updateFlightStatus = useAirportStore((state) => state.updateFlightStatus);
   const updateGateMessage = useAirportStore((state) => state.updateGateMessage);
@@ -263,19 +265,56 @@ export const BoardingApp = () => {
     }
   };
 
-  const handlePromoteWait = () => {
+  const handlePromoteWait = async () => {
     if (!selectedPaxId) return alert('Select a passenger first');
     const pax = passengers.find(p => p.id === selectedPaxId);
     if (pax) {
         const newSeat = prompt('Enter Seat Assignment:', '10A');
         if (newSeat && newSeat.trim()) {
             const seat = newSeat.trim().toUpperCase();
+            const oldSeat = pax.seat;
             updatePassengerDetails(pax.pnr, { seat: seat, status: 'CHECKED_IN' });
             // Send notification to passenger about seat assignment
             const flight = flights.find(f => f.id === pax.flightId);
             const flightInfo = flight ? `${flight.flightNumber} to ${flight.destinationCity || flight.destination}` : 'your flight';
             addPassengerNotification(pax.pnr, `Seat assigned: ${seat} on ${flightInfo}`);
-            alert(`Seat ${seat} assigned. Notification sent to passenger.`);
+            
+            // Send email notification about seat assignment
+            const passengerEmail = emails.find((e: any) => e.pnr === pax.pnr)?.to || '';
+            if (passengerEmail && flight) {
+                try {
+                    const seatChangeHtml = `
+                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                            <h2 style="color: #2B4E71;">Seat Assignment Update</h2>
+                            <p>Dear ${pax.firstName} ${pax.lastName},</p>
+                            <p>Your seat assignment has been updated for flight ${flight.flightNumber}.</p>
+                            <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                                <p><strong>Previous Seat:</strong> ${oldSeat || 'Standby (SBY)'}</p>
+                                <p><strong>New Seat:</strong> ${seat}</p>
+                                <p><strong>Flight:</strong> ${flight.flightNumber}</p>
+                                <p><strong>Route:</strong> ${flight.origin} → ${flight.destination}</p>
+                                <p><strong>Date:</strong> ${flight.date ? new Date(flight.date).toLocaleDateString() : 'TBA'}</p>
+                                <p><strong>Departure Time:</strong> ${flight.std}</p>
+                                <p><strong>Gate:</strong> ${flight.gate || 'TBA'}</p>
+                            </div>
+                            <p>Please check in at the airport with your updated seat assignment.</p>
+                            <p>Thank you for choosing airBaltic.</p>
+                        </div>
+                    `;
+                    
+                    await sendEmailConfirmation(
+                        pax.pnr,
+                        passengerEmail,
+                        `Seat Assignment Update - ${flight.flightNumber}`,
+                        `Your seat has been assigned: ${seat} for flight ${flight.flightNumber}`,
+                        seatChangeHtml
+                    );
+                } catch (error) {
+                    console.error('Error sending seat assignment email:', error);
+                }
+            }
+            
+            alert(`Seat ${seat} assigned. Notification sent to passenger.${passengerEmail ? ' Email sent.' : ''}`);
         }
     }
   };

@@ -626,14 +626,52 @@ export const CheckInApp = () => {
     }
   };
   
-  const handleSeatChange = (newSeat: string) => {
+  const handleSeatChange = async (newSeat: string) => {
       if (isFlightClosed) {
           alert('FLIGHT CLOSED - EDITING DISABLED');
           return;
       }
       if (foundPassenger) {
+          const oldSeat = foundPassenger.seat;
           updatePassengerDetails(foundPassenger.pnr, { seat: newSeat });
           setCurrentScreen('ACCEPTANCE');
+          
+          // Send email notification about seat change
+          const passengerEmail = emails.find((e: any) => e.pnr === foundPassenger.pnr)?.to || '';
+          if (passengerEmail && foundFlight) {
+              try {
+                  const seatChangeHtml = `
+                      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                          <h2 style="color: #2B4E71;">Seat Assignment Update</h2>
+                          <p>Dear ${foundPassenger.firstName} ${foundPassenger.lastName},</p>
+                          <p>Your seat assignment has been updated for flight ${foundFlight.flightNumber}.</p>
+                          <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                              <p><strong>Previous Seat:</strong> ${oldSeat || 'Not assigned'}</p>
+                              <p><strong>New Seat:</strong> ${newSeat}</p>
+                              <p><strong>Flight:</strong> ${foundFlight.flightNumber}</p>
+                              <p><strong>Route:</strong> ${foundFlight.origin} → ${foundFlight.destination}</p>
+                              <p><strong>Date:</strong> ${foundFlight.date ? new Date(foundFlight.date).toLocaleDateString() : 'TBA'}</p>
+                              <p><strong>Departure Time:</strong> ${foundFlight.std}</p>
+                              <p><strong>Gate:</strong> ${foundFlight.gate || 'TBA'}</p>
+                          </div>
+                          <p>Please check in at the airport with your updated seat assignment.</p>
+                          <p>Thank you for choosing airBaltic.</p>
+                      </div>
+                  `;
+                  
+                  await sendEmailConfirmation(
+                      foundPassenger.pnr,
+                      passengerEmail,
+                      `Seat Assignment Update - ${foundFlight.flightNumber}`,
+                      `Your seat has been changed to ${newSeat} for flight ${foundFlight.flightNumber}`,
+                      seatChangeHtml
+                  );
+                  addLog(`Seat change email sent to ${passengerEmail} for ${foundPassenger.pnr}`, 'CHECK_IN', 'SUCCESS');
+              } catch (error) {
+                  console.error('Error sending seat change email:', error);
+                  addLog(`Failed to send seat change email for ${foundPassenger.pnr}`, 'CHECK_IN', 'ERROR');
+              }
+          }
       }
   };
 
@@ -967,6 +1005,24 @@ export const CheckInApp = () => {
             <div className="bg-gradient-to-b from-[#EBE9E3] to-[#D4D0C8] px-2 py-1 font-bold border-b border-white border-t border-[#A0A0A0] text-gray-700">Menus</div>
             <div className="p-2 space-y-1">
                 <button disabled={!isPassengerEditable} onClick={() => setShowSbyModal(true)} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Set SBY Status</span></button>
+                <button 
+                    disabled={!isPassengerEditable} 
+                    onClick={() => {
+                        if (isFlightClosed) {
+                            alert('FLIGHT CLOSED - EDITING DISABLED');
+                            return;
+                        }
+                        if (foundPassenger) {
+                            if (confirm(`Set seat to SBY (Standby) for ${foundPassenger.lastName} ${foundPassenger.firstName}?`)) {
+                                handleSeatChange('SBY');
+                                alert('Seat set to SBY');
+                            }
+                        }
+                    }} 
+                    className="w-full text-left flex justify-between hover:bg-orange-500 hover:text-white px-1 cursor-pointer disabled:text-gray-400"
+                >
+                    <span className="font-bold text-orange-600">Set SBY Seat</span>
+                </button>
                 <button disabled={!isPassengerEditable} onClick={() => setShowCommentModal(true)} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Add Comment</span></button>
                 <button disabled={!foundPassenger} onClick={() => setShowLogsModal(true)} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>View Logs</span></button>
                 <button disabled={!isPassengerEditable} onClick={openDocVerifyModal} className="w-full text-left flex justify-between hover:bg-[#316AC5] hover:text-white px-1 cursor-pointer disabled:text-gray-400"><span>Document Verify</span></button>
