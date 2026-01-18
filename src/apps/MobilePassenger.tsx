@@ -688,34 +688,65 @@ export const MobilePassengerApp = () => {
           <div className="text-xs text-slate-500">
             Status: {isDatabaseReady ? 'Synced' : 'Offline'}{lastSync ? ` · Last sync ${lastSync}` : ''}
           </div>
-          {selectedPassenger ? (
-            <button
-              className="bg-white rounded-2xl shadow-sm overflow-hidden text-left"
-              onClick={() => setScreen('tripDetail')}
-            >
-              <div className="h-40 bg-gradient-to-r from-slate-800 via-slate-700 to-slate-500 relative">
-                <div className="absolute left-4 bottom-4">
-                  <span className="bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-semibold">
-                    {selectedPassenger.seat === 'SBY' ? 'STANDBY' : 'CONFIRMED'}
-                  </span>
-                </div>
-              </div>
-              <div className="p-4 space-y-2">
-                <div className="flex items-center justify-between text-xs text-slate-500">
-                  <span>{selectedPassenger.seat === 'SBY' ? 'Standby' : 'One Way'}</span>
-                  <span>Confirmation # {selectedPassenger.pnr}</span>
-                </div>
-            <div className="text-2xl font-semibold">
-              {finalSegment?.flight?.destination || selectedFlight?.destination || 'Trip details pending'}
+          {tripPassengers.length > 0 ? (
+            <div className="space-y-3">
+              {tripPassengers.map((passenger) => {
+                if (!passenger) return null;
+                const passengerSegments = passengers
+                  .filter((p) => p.pnr === passenger.pnr)
+                  .map((p) => ({
+                    passenger: p,
+                    flight: flights.find((f) => f.id === p.flightId)
+                  }))
+                  .filter((seg) => seg.flight)
+                  .sort((a, b) => {
+                    const dateA = a.flight?.date || '';
+                    const dateB = b.flight?.date || '';
+                    if (dateA !== dateB) return dateA.localeCompare(dateB);
+                    return (a.flight?.std || '').localeCompare(b.flight?.std || '');
+                  });
+                const passengerFlight = passengerSegments[0]?.flight || null;
+                const passengerFinalSegment = passengerSegments[passengerSegments.length - 1];
+                const isSelected = selectedPnr === passenger.pnr;
+                
+                return (
+                  <button
+                    key={passenger.pnr}
+                    className={clsx(
+                      "bg-white rounded-2xl shadow-sm overflow-hidden text-left w-full",
+                      isSelected ? "ring-2 ring-blue-500" : ""
+                    )}
+                    onClick={() => {
+                      setSelectedPnr(passenger.pnr);
+                      setScreen('tripDetail');
+                    }}
+                  >
+                    <div className="h-40 bg-gradient-to-r from-slate-800 via-slate-700 to-slate-500 relative">
+                      <div className="absolute left-4 bottom-4">
+                        <span className="bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-semibold">
+                          {passenger.seat === 'SBY' ? 'STANDBY' : 'CONFIRMED'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="p-4 space-y-2">
+                      <div className="flex items-center justify-between text-xs text-slate-500">
+                        <span>{passenger.seat === 'SBY' ? 'Standby' : passengerSegments.length > 1 ? 'Multi-City' : 'One Way'}</span>
+                        <span>Confirmation # {passenger.pnr}</span>
+                      </div>
+                      <div className="text-2xl font-semibold">
+                        {passengerFinalSegment?.flight?.destination || passengerFlight?.destination || 'Trip details pending'}
+                      </div>
+                      <div className="text-sm text-slate-600">
+                        {passengerFlight ? `${passengerFlight.origin} - ${passengerFlight.destination}` : 'Flight information loading'}
+                      </div>
+                      <div className="text-sm text-slate-500">
+                        {passengerFlight ? formatDate(passengerFlight.date) : ''}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
-                <div className="text-sm text-slate-600">
-              {selectedFlight ? `${selectedFlight.origin} - ${selectedFlight.destination}` : 'Flight information loading'}
-                </div>
-                <div className="text-sm text-slate-500">
-                  {selectedFlight ? formatDate(selectedFlight.date) : ''}
-                </div>
-              </div>
-            </button>
           ) : (
             <div className="bg-white rounded-2xl shadow-sm p-6 text-slate-600">
               No Trip. Add a reservation to view.
