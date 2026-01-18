@@ -47,6 +47,35 @@ export const BoardingApp = () => {
   const passengers = useAirportStore((state) => state.passengers);
   const updatePassengerDetails = useAirportStore((state) => state.updatePassengerDetails);
   const boardPassenger = useAirportStore((state) => state.boardPassenger);
+  const deboardPassenger = useAirportStore((state) => state.deboardPassenger);
+  const updateFlightStatus = useAirportStore((state) => state.updateFlightStatus);
+  const updateGateMessage = useAirportStore((state) => state.updateGateMessage);
+  const offloadPassenger = useAirportStore((state) => state.offloadPassenger);
+  const addNoRecPassenger = useAirportStore((state) => state.addNoRecPassenger);
+
+  const selectedFlight = flights.find(f => f.id === selectedFlightId);
+  
+  // Helper function to add notification for passenger
+  const addPassengerNotification = (pnr: string, message: string) => {
+    try {
+      const NOTIFY_KEY = 'mobile-notifications-v1';
+      const saved = localStorage.getItem(NOTIFY_KEY);
+      const notifications = saved ? JSON.parse(saved) : [];
+      const timestamp = new Date().toLocaleTimeString();
+      const fullMessage = `${timestamp} · ${message}`;
+      // Add notification if not already present
+      if (!notifications.includes(fullMessage)) {
+        notifications.unshift(fullMessage);
+        localStorage.setItem(NOTIFY_KEY, JSON.stringify(notifications.slice(0, 50)));
+      }
+      // Try to send browser notification if permission granted
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('Flight Update', { body: message });
+      }
+    } catch (error) {
+      console.error('Error adding notification:', error);
+    }
+  };
   
   // Persist selectedFlightId to localStorage whenever it changes
   useEffect(() => {
@@ -88,35 +117,6 @@ export const BoardingApp = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFlight?.status, selectedFlight?.id, passengers]);
-  const deboardPassenger = useAirportStore((state) => state.deboardPassenger);
-  const updateFlightStatus = useAirportStore((state) => state.updateFlightStatus);
-  const updateGateMessage = useAirportStore((state) => state.updateGateMessage);
-  const offloadPassenger = useAirportStore((state) => state.offloadPassenger);
-  const addNoRecPassenger = useAirportStore((state) => state.addNoRecPassenger);
-
-  const selectedFlight = flights.find(f => f.id === selectedFlightId);
-  
-  // Helper function to add notification for passenger
-  const addPassengerNotification = (pnr: string, message: string) => {
-    try {
-      const NOTIFY_KEY = 'mobile-notifications-v1';
-      const saved = localStorage.getItem(NOTIFY_KEY);
-      const notifications = saved ? JSON.parse(saved) : [];
-      const timestamp = new Date().toLocaleTimeString();
-      const fullMessage = `${timestamp} · ${message}`;
-      // Add notification if not already present
-      if (!notifications.includes(fullMessage)) {
-        notifications.unshift(fullMessage);
-        localStorage.setItem(NOTIFY_KEY, JSON.stringify(notifications.slice(0, 50)));
-      }
-      // Try to send browser notification if permission granted
-      if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('Flight Update', { body: message });
-      }
-    } catch (error) {
-      console.error('Error adding notification:', error);
-    }
-  };
   
   // Filter Pax for Flight
   const flightPassengers = useMemo(() => 
