@@ -53,6 +53,8 @@ export const OCCApp = () => {
 
   const handleOpenCreate = () => {
     const now = new Date();
+    const hours = now.getHours().toString().padStart(2, '0');
+    const minutes = now.getMinutes().toString().padStart(2, '0');
     setCreateForm({
       flightNumber: '',
       origin: '',
@@ -60,7 +62,7 @@ export const OCCApp = () => {
       destination: '',
       destinationCity: '',
       date: now.toISOString().slice(0, 10),
-      std: now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+      std: `${hours}:${minutes}`,
       etd: '',
       gate: '',
       aircraft: '',
@@ -70,7 +72,7 @@ export const OCCApp = () => {
     setShowCreateModal(true);
   };
 
-  const handleCreateSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleCreateSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const flightNumber = createForm.flightNumber.trim().toUpperCase();
     const origin = createForm.origin.trim().toUpperCase();
@@ -103,9 +105,10 @@ export const OCCApp = () => {
       registration: createForm.registration.trim() || undefined
     };
 
-    addFlight(newFlight);
+    await addFlight(newFlight);
     addLog(`Flight ${newFlight.flightNumber} created in OCC`, 'OCC', 'SUCCESS');
     setSelectedFlightId(newFlight.id);
+    setSearchTerm(''); // Clear search to show all flights including the new one
     setShowCreateModal(false);
   };
 

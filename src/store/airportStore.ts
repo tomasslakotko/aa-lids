@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { initializeDatabase, loadAllData, saveAllData } from '../services/database';
+import { initializeDatabase, loadAllData, saveAllData, saveFlights } from '../services/database';
 import { setupRealtimeSubscriptions, setLocalUpdateFlag } from '../services/realtime';
 
 // --- Types ---
@@ -111,7 +111,7 @@ interface AirportStore {
   updateFlightStatus: (flightId: string, status: FlightStatus) => void;
   updateGateMessage: (flightId: string, message: string) => void;
   updateFlightDetails: (flightId: string, updates: Partial<Flight>) => void;
-  addFlight: (flight: Flight) => void;
+  addFlight: (flight: Flight) => Promise<void>;
   checkInPassenger: (pnr: string) => Promise<boolean>;
   cancelCheckIn: (pnr: string) => boolean;
   updatePassengerDetails: (pnr: string, details: Partial<Passenger>) => void;
@@ -677,13 +677,20 @@ export const useAirportStore = create<AirportStore>()(
         }
       },
 
-      addFlight: (flight) => {
+      addFlight: async (flight) => {
         set((state) => ({
           flights: [...state.flights, flight]
         }));
         get().addLog(`Flight ${flight.flightNumber} created`, 'SYSTEM', 'SUCCESS');
+        // Immediately save the new flight to database
         if (get().isDatabaseReady) {
-          get().syncToDatabase().catch(() => {});
+          try {
+            await saveFlights([flight]);
+            get().addLog(`Flight ${flight.flightNumber} saved to database`, 'SYSTEM', 'SUCCESS');
+          } catch (error) {
+            console.error('Failed to save new flight to database:', error);
+            get().addLog(`Failed to save flight ${flight.flightNumber} to database`, 'SYSTEM', 'ERROR');
+          }
         }
       },
 
