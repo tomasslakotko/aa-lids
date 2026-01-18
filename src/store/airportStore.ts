@@ -111,6 +111,7 @@ interface AirportStore {
   updateFlightStatus: (flightId: string, status: FlightStatus) => void;
   updateGateMessage: (flightId: string, message: string) => void;
   updateFlightDetails: (flightId: string, updates: Partial<Flight>) => void;
+  addFlight: (flight: Flight) => void;
   checkInPassenger: (pnr: string) => Promise<boolean>;
   cancelCheckIn: (pnr: string) => boolean;
   updatePassengerDetails: (pnr: string, details: Partial<Passenger>) => void;
@@ -139,6 +140,7 @@ interface AirportStore {
   
   // Email Actions
   sendEmailConfirmation: (pnr: string, to: string, subject: string, content: string, htmlContent?: string) => Promise<string>;
+  addEmailContact: (pnr: string, to: string) => void;
   
   // Database Actions
   syncToDatabase: () => Promise<void>;
@@ -565,6 +567,56 @@ const generateFlights = (): Flight[] => {
     });
   });
 
+  // 5. Ensure multiple transit options for all destinations (RIX -> hub -> destination)
+  const getTransitHubsForDestination = (destination: string) => {
+    const hubs = [...TRANSIT_HUBS];
+    const seed = destination.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+    const idx1 = seed % hubs.length;
+    const idx2 = (seed + 3) % hubs.length;
+    return [hubs[idx1], hubs[idx2]];
+  };
+
+  DESTINATIONS.forEach(dest => {
+    const hubs = getTransitHubsForDestination(dest.code);
+    hubs.forEach((hub, i) => {
+      const date = randomFlightDate();
+      const leg1Std = randomTime(7 + i * 2, 10 + i * 2);
+      const leg2Std = addDuration(leg1Std, 150); // allow 2.5h to connect
+
+      flights.push({
+        id: Math.random().toString(36).substr(2, 9),
+        flightNumber: `${dest.airline}${dest.flightNum + 5 + i}`,
+        origin: HUB,
+        destination: hub.code,
+        originCity: 'Riga',
+        destinationCity: hub.city,
+        std: leg1Std,
+        etd: leg1Std,
+        date,
+        gate: ['A', 'B', 'C'][Math.floor(Math.random() * 3)] + Math.floor(Math.random() * 25 + 1),
+        status: 'SCHEDULED',
+        aircraft: getAircraft(dest.airline),
+        registration: getRegistration(dest.airline)
+      });
+
+      flights.push({
+        id: Math.random().toString(36).substr(2, 9),
+        flightNumber: `${dest.airline}${dest.flightNum + 55 + i}`,
+        origin: hub.code,
+        destination: dest.code,
+        originCity: hub.city,
+        destinationCity: dest.city,
+        std: leg2Std,
+        etd: leg2Std,
+        date,
+        gate: 'X' + Math.floor(Math.random() * 99),
+        status: 'SCHEDULED',
+        aircraft: getAircraft(dest.airline),
+        registration: getRegistration(dest.airline)
+      });
+    });
+  });
+
   return flights.sort((a, b) => a.std.localeCompare(b.std));
 };
 
@@ -620,6 +672,16 @@ export const useAirportStore = create<AirportStore>()(
         }));
         get().addLog(`Flight details updated for ${flightId}`, 'OCC', 'INFO');
         // Sync to database
+        if (get().isDatabaseReady) {
+          get().syncToDatabase().catch(() => {});
+        }
+      },
+
+      addFlight: (flight) => {
+        set((state) => ({
+          flights: [...state.flights, flight]
+        }));
+        get().addLog(`Flight ${flight.flightNumber} created`, 'SYSTEM', 'SUCCESS');
         if (get().isDatabaseReady) {
           get().syncToDatabase().catch(() => {});
         }
@@ -1224,6 +1286,27 @@ export const useAirportStore = create<AirportStore>()(
           }));
           get().addLog(`Email service error for PNR ${pnr}: ${error.message}`, 'RESERVATIONS', 'ERROR');
           return emailId;
+        }
+      },
+
+      addEmailContact: (pnr, to) => {
+        const emailId = Math.random().toString(36).substr(2, 9).toUpperCase();
+        const email: EmailConfirmation = {
+          id: emailId,
+          pnr,
+          to,
+          from: 'noreply@local',
+          subject: 'Booking Contact',
+          sentAt: new Date().toISOString(),
+          status: 'PENDING',
+          content: 'Contact email added from mobile profile.'
+        };
+        set((state) => ({
+          emails: [...state.emails, email]
+        }));
+        get().addLog(`Contact email added for ${pnr}: ${to}`, 'RESERVATIONS', 'INFO');
+        if (get().isDatabaseReady) {
+          get().syncToDatabase().catch(() => {});
         }
       },
       

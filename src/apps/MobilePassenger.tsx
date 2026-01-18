@@ -35,6 +35,7 @@ const SELECTED_KEY = 'mobile-selected-pnr-v1';
 const NOTIFY_KEY = 'mobile-notifications-v1';
 const NOTIFY_ENABLED_KEY = 'mobile-notifications-enabled-v1';
 const PROFILE_KEY = 'mobile-profile-v1';
+const RECENT_SEARCH_KEY = 'mobile-recent-search-v1';
 
 const generatePnr = () => Math.random().toString(36).substring(2, 8).toUpperCase();
 
@@ -46,6 +47,8 @@ export const MobilePassengerApp = () => {
   const checkInPassenger = useAirportStore((state) => state.checkInPassenger);
   const createBooking = useAirportStore((state) => state.createBooking);
   const addLog = useAirportStore((state) => state.addLog);
+  const addEmailContact = useAirportStore((state) => state.addEmailContact);
+  const addFlight = useAirportStore((state) => state.addFlight);
   const loadFromDatabase = useAirportStore((state) => state.loadFromDatabase);
   const isDatabaseReady = useAirportStore((state) => state.isDatabaseReady);
 
@@ -89,6 +92,16 @@ export const MobilePassengerApp = () => {
       return { name: '', email: '', skymiles: '' };
     }
   });
+  const [recentSearches, setRecentSearches] = useState<
+    Array<{ origin: string; destination: string; depart: string; returnDate?: string; type: string }>
+  >(() => {
+    try {
+      const saved = localStorage.getItem(RECENT_SEARCH_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const lastFlightRef = useRef<{ status?: string; gate?: string } | null>(null);
 
   const [lookupPnr, setLookupPnr] = useState('');
@@ -96,7 +109,10 @@ export const MobilePassengerApp = () => {
   const [bookingFirstName, setBookingFirstName] = useState('');
   const [bookingLastName, setBookingLastName] = useState('');
   const [bookingFlightId, setBookingFlightId] = useState('');
+  const [bookingConnectionFlightId, setBookingConnectionFlightId] = useState('');
   const [searchDate, setSearchDate] = useState('');
+  const [returnDate, setReturnDate] = useState('');
+  const [tripType, setTripType] = useState<'ONE_WAY' | 'ROUND_TRIP' | 'MULTI_CITY'>('ONE_WAY');
   const [showResults, setShowResults] = useState(false);
   const [searchOrigin, setSearchOrigin] = useState('');
   const [searchDestination, setSearchDestination] = useState('');
@@ -153,6 +169,10 @@ export const MobilePassengerApp = () => {
     localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
   }, [profile]);
 
+  useEffect(() => {
+    localStorage.setItem(RECENT_SEARCH_KEY, JSON.stringify(recentSearches));
+  }, [recentSearches]);
+
   const tripPassengers = useMemo(
     () => trips.map((pnr) => passengers.find((p) => p.pnr === pnr)).filter(Boolean),
     [trips, passengers]
@@ -204,6 +224,10 @@ export const MobilePassengerApp = () => {
     return bookingFlightId ? flights.find((f) => f.id === bookingFlightId) || null : null;
   }, [bookingFlightId, flights]);
 
+  const bookingSelectedConnection = useMemo(() => {
+    return bookingConnectionFlightId ? flights.find((f) => f.id === bookingConnectionFlightId) || null : null;
+  }, [bookingConnectionFlightId, flights]);
+
   const airportOptions = useMemo(() => {
     const all = new Set<string>();
     flights.forEach((f) => {
@@ -218,6 +242,22 @@ export const MobilePassengerApp = () => {
       setSearchDate(availableDates[0]);
     }
   }, [availableDates, searchDate]);
+
+  useEffect(() => {
+    if (!searchOrigin && airportOptions.length > 0) {
+      setSearchOrigin('RIX');
+    }
+  }, [airportOptions, searchOrigin]);
+
+  useEffect(() => {
+    if (!profile.name) return;
+    const parts = profile.name.trim().split(/\s+/);
+    if (parts.length === 0) return;
+    const firstName = parts[0];
+    const lastName = parts.slice(1).join(' ') || parts[0];
+    setBookingFirstName(firstName.toUpperCase());
+    setBookingLastName(lastName.toUpperCase());
+  }, [profile.name]);
 
   useEffect(() => {
     if (selectedPassenger && selectedPassenger.pnr !== selectedPnr) {
@@ -281,12 +321,20 @@ export const MobilePassengerApp = () => {
   const handleBookTrip = () => {
     setError('');
     setSuccess('');
-    if (!bookingFirstName || !bookingLastName || !bookingFlightId) {
+    const firstName = bookingFirstName || profile.name.split(' ')[0] || '';
+    const lastName = bookingLastName || profile.name.split(' ').slice(1).join(' ') || '';
+    if (!firstName || !lastName || !bookingFlightId) {
       setError('Please fill in all booking fields.');
       return;
     }
     const newPnr = generatePnr();
-    createBooking(newPnr, bookingLastName.toUpperCase(), bookingFirstName.toUpperCase(), bookingFlightId);
+    createBooking(newPnr, lastName.toUpperCase(), firstName.toUpperCase(), bookingFlightId);
+    if (bookingConnectionFlightId) {
+      createBooking(newPnr, lastName.toUpperCase(), firstName.toUpperCase(), bookingConnectionFlightId);
+    }
+    if (profile.email) {
+      addEmailContact(newPnr, profile.email);
+    }
     if (bookingSelectedFlight) {
       addLog(
         `Mobile booking ${newPnr}: ${bookingSelectedFlight.flightNumber} ${fareClass} EUR ${farePricing.total.toFixed(2)}`,
@@ -398,6 +446,60 @@ export const MobilePassengerApp = () => {
     return time;
   };
 
+  const toMinutes = (flight?: typeof selectedFlight) => {
+    const dt = toDateTime(flight);
+    if (!dt) return null;
+    return dt.getHours() * 60 + dt.getMinutes();
+  };
+
+  const connectionOptions = useMemo(() => {
+    if (!searchOrigin || !searchDestination) return [];
+    const leg1 = flightsForDate.filter((f) => f.origin === searchOrigin);
+    const options: Array<{ leg1: typeof flights[0]; leg2: typeof flights[0] }> = [];
+    leg1.forEach((l1) => {
+      const l1Dep = toMinutes(l1);
+      if (l1Dep === null) return;
+      const l1Arr = l1Dep + estimateDurationMinutes(l1);
+      const leg2 = flightsForDate.filter((f) => f.origin === l1.destination && f.destination === searchDestination);
+      leg2.forEach((l2) => {
+        const l2Dep = toMinutes(l2);
+        if (l2Dep === null) return;
+        const connectionTime = l2Dep - l1Arr;
+        if (connectionTime >= 90 && connectionTime <= 480) {
+          options.push({ leg1: l1, leg2: l2 });
+        }
+      });
+    });
+    return options;
+  }, [flightsForDate, searchOrigin, searchDestination]);
+
+  const generateFlightNumber = (origin: string, destination: string) => {
+    const carrier = origin === 'RIX' ? 'BT' : 'XX';
+    const seed = Math.floor(Math.random() * 800) + 100;
+    return `${carrier}${seed}`;
+  };
+
+  const generateFlight = (origin: string, destination: string, date: string) => {
+    const hour = Math.floor(Math.random() * 12) + 6;
+    const minute = Math.floor(Math.random() * 12) * 5;
+    const std = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+    const gate = ['A', 'B', 'C'][Math.floor(Math.random() * 3)] + Math.floor(Math.random() * 25 + 1);
+    return {
+      id: Math.random().toString(36).substr(2, 9),
+      flightNumber: generateFlightNumber(origin, destination),
+      origin,
+      destination,
+      originCity: origin,
+      destinationCity: destination,
+      std,
+      etd: std,
+      date,
+      gate,
+      status: 'SCHEDULED' as const,
+      aircraft: 'A220'
+    };
+  };
+
   const estimateDurationMinutes = (flight?: typeof selectedFlight) => {
     if (!flight) return 120;
     const longHaul = new Set(['JFK', 'LAX', 'BKK', 'DOH', 'DXB', 'SIN', 'NRT', 'ICN', 'SFO', 'SEA', 'ORD']);
@@ -413,16 +515,17 @@ export const MobilePassengerApp = () => {
   };
 
   const farePricing = useMemo(() => {
-    if (!bookingSelectedFlight) return { base: 0, taxes: 0, total: 0 };
-    const seed = bookingSelectedFlight.flightNumber
-      .split('')
-      .reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
-    const base = 90 + (seed % 160);
+    const flightsToPrice = [bookingSelectedFlight, bookingSelectedConnection].filter(Boolean) as Array<NonNullable<typeof bookingSelectedFlight>>;
+    if (flightsToPrice.length === 0) return { base: 0, taxes: 0, total: 0 };
     const multiplier = fareClass === 'BASIC' ? 0.85 : fareClass === 'MAIN' ? 1 : fareClass === 'COMFORT' ? 1.35 : 2.1;
-    const baseFare = Math.round(base * multiplier);
+    const baseFare = flightsToPrice.reduce((sum, flight) => {
+      const seed = flight.flightNumber.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+      const base = 90 + (seed % 160);
+      return sum + Math.round(base * multiplier);
+    }, 0);
     const taxes = Math.round(baseFare * 0.23);
     return { base: baseFare, taxes, total: baseFare + taxes };
-  }, [bookingSelectedFlight, fareClass]);
+  }, [bookingSelectedFlight, bookingSelectedConnection, fareClass]);
 
   const navItems = [
     { id: 'explore', label: 'Explore', icon: Home },
@@ -754,61 +857,71 @@ export const MobilePassengerApp = () => {
         <div className="p-4 space-y-4">
           <div className="bg-white rounded-2xl shadow-sm p-4 space-y-4">
             <div className="flex gap-2 bg-slate-100 rounded-full p-1 text-xs font-semibold">
-              {['Round Trip', 'One-Way', 'Multi-City'].map((label) => (
+              {[
+                { key: 'ROUND_TRIP', label: 'Round Trip' },
+                { key: 'ONE_WAY', label: 'One-Way' },
+                { key: 'MULTI_CITY', label: 'Multi-City' }
+              ].map((option) => (
                 <button
-                  key={label}
+                  key={option.key}
                   className={clsx(
                     'flex-1 py-2 rounded-full',
-                    label === 'One-Way' ? 'bg-white shadow text-slate-900' : 'text-slate-500'
+                    tripType === option.key ? 'bg-white shadow text-slate-900' : 'text-slate-500'
                   )}
+                  onClick={() => setTripType(option.key as typeof tripType)}
                 >
-                  {label}
+                  {option.label}
                 </button>
               ))}
             </div>
-            <div className="grid grid-cols-2 gap-4 text-center">
-              <div className="border rounded-xl p-3">
-                <button
-                  type="button"
-                  className="text-3xl font-semibold w-full"
-                  onClick={() => setAirportPicker({ open: true, type: 'origin' })}
-                >
-                  {searchOrigin || 'DTW'}
-                </button>
-                <div className="text-xs text-slate-500">Departure</div>
+            <div className="space-y-3">
+              <button
+                type="button"
+                className="w-full border rounded-xl p-3 flex items-center justify-between"
+                onClick={() => setAirportPicker({ open: true, type: 'origin' })}
+              >
+                <div className="text-left">
+                  <div className="text-xs text-slate-500">From</div>
+                  <div className="text-lg font-semibold">{searchOrigin || 'Select origin'}</div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-slate-400" />
+              </button>
+              <button
+                type="button"
+                className="w-full border rounded-xl p-3 flex items-center justify-between"
+                onClick={() => setAirportPicker({ open: true, type: 'destination' })}
+              >
+                <div className="text-left">
+                  <div className="text-xs text-slate-500">To</div>
+                  <div className="text-lg font-semibold">{searchDestination || 'Select destination'}</div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-slate-400" />
+              </button>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="border rounded-xl p-3">
+                  <div className="text-xs text-slate-500 mb-1">Departure</div>
+                  <input
+                    type="date"
+                    className="w-full text-sm"
+                    value={searchDate}
+                    onChange={(e) => setSearchDate(e.target.value)}
+                  />
+                </div>
+                <div className="border rounded-xl p-3">
+                  <div className="text-xs text-slate-500 mb-1">Return</div>
+                  <input
+                    type="date"
+                    className="w-full text-sm"
+                    value={returnDate}
+                    onChange={(e) => setReturnDate(e.target.value)}
+                    disabled={tripType !== 'ROUND_TRIP'}
+                  />
+                </div>
               </div>
-              <div className="border rounded-xl p-3">
-                <button
-                  type="button"
-                  className="text-3xl font-semibold w-full"
-                  onClick={() => setAirportPicker({ open: true, type: 'destination' })}
-                >
-                  {searchDestination || 'MKE'}
-                </button>
-                <div className="text-xs text-slate-500">Arrival</div>
+              <div className="border rounded-xl p-3 flex items-center justify-between">
+                <span className="text-sm text-slate-600">Passengers</span>
+                <span className="text-sm">1</span>
               </div>
-            </div>
-            <div className="border rounded-xl p-3 flex items-center justify-between">
-              <span className="text-sm text-slate-600">Date</span>
-              <div className="flex items-center gap-2">
-                <input
-                  type="date"
-                  className="text-sm"
-                  value={searchDate}
-                  onChange={(e) => setSearchDate(e.target.value)}
-                />
-                <button
-                  type="button"
-                  className="text-xs text-slate-500"
-                  onClick={() => setSearchDate('')}
-                >
-                  Any
-                </button>
-              </div>
-            </div>
-            <div className="border rounded-xl p-3 flex items-center justify-between">
-              <span className="text-sm text-slate-600">Passengers</span>
-              <span className="text-sm">1</span>
             </div>
           </div>
 
@@ -864,9 +977,26 @@ export const MobilePassengerApp = () => {
           <button
             className="w-full bg-red-600 text-white font-semibold py-3 rounded-xl"
             onClick={() => {
+              if (!searchOrigin || !searchDestination || !searchDate) {
+                setError('Select origin, destination, and date.');
+                return;
+              }
               setShowResults(true);
               setSuccess('');
               setError('');
+              setRecentSearches((prev) => {
+                const next = [
+                  {
+                    origin: searchOrigin,
+                    destination: searchDestination,
+                    depart: searchDate,
+                    returnDate: returnDate || undefined,
+                    type: tripType
+                  },
+                  ...prev
+                ];
+                return next.slice(0, 5);
+              });
             }}
           >
             Find Flights
@@ -885,7 +1015,10 @@ export const MobilePassengerApp = () => {
                     'w-full border rounded-lg p-3 text-left',
                     bookingFlightId === f.id ? 'border-blue-500 bg-blue-50' : 'border-slate-200'
                   )}
-                  onClick={() => setBookingFlightId(f.id)}
+                  onClick={() => {
+                    setBookingFlightId(f.id);
+                    setBookingConnectionFlightId('');
+                  }}
                 >
                   <div className="font-semibold">
                     {f.flightNumber} · {f.origin}-{f.destination}
@@ -895,6 +1028,37 @@ export const MobilePassengerApp = () => {
                   </div>
                 </button>
               ))}
+              {connectionOptions.length > 0 && (
+                <div className="pt-2">
+                  <div className="text-xs font-semibold text-slate-500 mb-2">Connections</div>
+                  <div className="space-y-2">
+                    {connectionOptions.map((conn, idx) => (
+                      <button
+                        key={`${conn.leg1.id}-${conn.leg2.id}-${idx}`}
+                        className={clsx(
+                          'w-full border rounded-lg p-3 text-left',
+                          bookingFlightId === conn.leg1.id && bookingConnectionFlightId === conn.leg2.id
+                            ? 'border-blue-500 bg-blue-50'
+                            : 'border-slate-200'
+                        )}
+                        onClick={() => {
+                          setBookingFlightId(conn.leg1.id);
+                          setBookingConnectionFlightId(conn.leg2.id);
+                        }}
+                      >
+                        <div className="font-semibold">
+                          {conn.leg1.origin} → {conn.leg2.destination} · {conn.leg1.flightNumber}/{conn.leg2.flightNumber}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {conn.leg1.origin}-{conn.leg1.destination} {formatTime(conn.leg1.std)} · Layover
+                          {' '}
+                          {Math.max(0, (toMinutes(conn.leg2) || 0) - (toMinutes(conn.leg1) || 0) - estimateDurationMinutes(conn.leg1))}m
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -912,6 +1076,43 @@ export const MobilePassengerApp = () => {
               <div className="flex justify-between text-sm font-semibold text-slate-800 border-t pt-2">
                 <span>Total</span>
                 <span>€{farePricing.total.toFixed(2)}</span>
+              </div>
+            </div>
+          )}
+
+          {recentSearches.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-semibold">Recent Search</div>
+                <button
+                  className="text-xs text-slate-500"
+                  onClick={() => setRecentSearches([])}
+                >
+                  Clear
+                </button>
+              </div>
+              <div className="space-y-2">
+                {recentSearches.map((item, idx) => (
+                  <button
+                    key={`${item.origin}-${item.destination}-${idx}`}
+                    className="w-full border rounded-lg p-3 text-left"
+                    onClick={() => {
+                      setSearchOrigin(item.origin);
+                      setSearchDestination(item.destination);
+                      setSearchDate(item.depart);
+                      setReturnDate(item.returnDate || '');
+                      setTripType(item.type as typeof tripType);
+                      setShowResults(false);
+                    }}
+                  >
+                    <div className="font-semibold text-sm">
+                      {item.origin} → {item.destination}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {formatDate(item.depart)}{item.returnDate ? ` - ${formatDate(item.returnDate)}` : ''} · {item.type.replace('_', ' ')}
+                    </div>
+                  </button>
+                ))}
               </div>
             </div>
           )}

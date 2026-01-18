@@ -1,5 +1,5 @@
 import { useAirportStore } from '../store/airportStore';
-import type { Flight } from '../store/airportStore';
+import type { Flight, FlightStatus } from '../store/airportStore';
 import { useState } from 'react';
 import clsx from 'clsx';
 import { Plane, Clock, MapPin, MessageSquare, Ban, CheckCircle, Search } from 'lucide-react';
@@ -9,10 +9,26 @@ export const OCCApp = () => {
   const logs = useAirportStore((state) => state.logs);
   const updateFlightStatus = useAirportStore((state) => state.updateFlightStatus);
   const updateFlightDetails = useAirportStore((state) => state.updateFlightDetails);
+  const addFlight = useAirportStore((state) => state.addFlight);
   const addLog = useAirportStore((state) => state.addLog);
   
   const [selectedFlightId, setSelectedFlightId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createForm, setCreateForm] = useState(() => ({
+    flightNumber: '',
+    origin: '',
+    originCity: '',
+    destination: '',
+    destinationCity: '',
+    date: new Date().toISOString().slice(0, 10),
+    std: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+    etd: '',
+    gate: '',
+    aircraft: '',
+    registration: '',
+    status: 'SCHEDULED' as FlightStatus
+  }));
   
   const selectedFlight = flights.find(f => f.id === selectedFlightId);
 
@@ -33,6 +49,64 @@ export const OCCApp = () => {
     if (selectedFlightId) {
       updateFlightDetails(selectedFlightId, { [field]: value });
     }
+  };
+
+  const handleOpenCreate = () => {
+    const now = new Date();
+    setCreateForm({
+      flightNumber: '',
+      origin: '',
+      originCity: '',
+      destination: '',
+      destinationCity: '',
+      date: now.toISOString().slice(0, 10),
+      std: now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+      etd: '',
+      gate: '',
+      aircraft: '',
+      registration: '',
+      status: 'SCHEDULED'
+    });
+    setShowCreateModal(true);
+  };
+
+  const handleCreateSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const flightNumber = createForm.flightNumber.trim().toUpperCase();
+    const origin = createForm.origin.trim().toUpperCase();
+    const destination = createForm.destination.trim().toUpperCase();
+    const std = createForm.std.trim();
+    const etd = createForm.etd.trim() || std;
+    const date = createForm.date.trim() || new Date().toISOString().slice(0, 10);
+    const gate = createForm.gate.trim();
+    const aircraft = createForm.aircraft.trim();
+
+    if (!flightNumber || !origin || !destination || !std || !gate || !aircraft) {
+      return;
+    }
+
+    const newFlight: Flight = {
+      id: typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `FLT-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      flightNumber,
+      origin,
+      destination,
+      originCity: createForm.originCity.trim() || undefined,
+      destinationCity: createForm.destinationCity.trim() || undefined,
+      std,
+      etd,
+      date,
+      gate,
+      status: createForm.status,
+      aircraft,
+      registration: createForm.registration.trim() || undefined
+    };
+
+    addFlight(newFlight);
+    addLog(`Flight ${newFlight.flightNumber} created in OCC`, 'OCC', 'SUCCESS');
+    setSelectedFlightId(newFlight.id);
+    setShowCreateModal(false);
   };
 
   return (
@@ -76,6 +150,13 @@ export const OCCApp = () => {
                         onChange={e => setSearchTerm(e.target.value)}
                     />
                 </div>
+                <button
+                    type="button"
+                    onClick={handleOpenCreate}
+                    className="shrink-0 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded border border-blue-500 transition-colors"
+                >
+                    Create Flight
+                </button>
              </div>
 
              {/* Scrollable List */}
@@ -268,6 +349,161 @@ export const OCCApp = () => {
              <div className="h-4" /> {/* Spacer */}
           </div>
        </div>
+       {showCreateModal && (
+         <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-50">
+            <form
+              onSubmit={handleCreateSubmit}
+              className="w-full max-w-2xl bg-gray-900 border border-gray-700 rounded-lg p-6 space-y-4"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-bold text-white">Create Flight</h3>
+                  <p className="text-xs text-gray-500">Add a new flight to the OCC system.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="text-gray-400 hover:text-white text-sm"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase text-gray-500 font-bold">Flight Number</label>
+                  <input
+                    value={createForm.flightNumber}
+                    onChange={(e) => setCreateForm((prev) => ({ ...prev, flightNumber: e.target.value }))}
+                    className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-white"
+                    placeholder="BT101"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase text-gray-500 font-bold">Status</label>
+                  <select
+                    value={createForm.status}
+                    onChange={(e) => setCreateForm((prev) => ({ ...prev, status: e.target.value as FlightStatus }))}
+                    className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-white"
+                  >
+                    <option value="SCHEDULED">SCHEDULED</option>
+                    <option value="BOARDING">BOARDING</option>
+                    <option value="DELAYED">DELAYED</option>
+                    <option value="DEPARTED">DEPARTED</option>
+                    <option value="ARRIVED">ARRIVED</option>
+                    <option value="CANCELLED">CANCELLED</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase text-gray-500 font-bold">Origin</label>
+                  <input
+                    value={createForm.origin}
+                    onChange={(e) => setCreateForm((prev) => ({ ...prev, origin: e.target.value }))}
+                    className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-white"
+                    placeholder="RIX"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase text-gray-500 font-bold">Origin City</label>
+                  <input
+                    value={createForm.originCity}
+                    onChange={(e) => setCreateForm((prev) => ({ ...prev, originCity: e.target.value }))}
+                    className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-white"
+                    placeholder="Riga"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase text-gray-500 font-bold">Destination</label>
+                  <input
+                    value={createForm.destination}
+                    onChange={(e) => setCreateForm((prev) => ({ ...prev, destination: e.target.value }))}
+                    className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-white"
+                    placeholder="FRA"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase text-gray-500 font-bold">Destination City</label>
+                  <input
+                    value={createForm.destinationCity}
+                    onChange={(e) => setCreateForm((prev) => ({ ...prev, destinationCity: e.target.value }))}
+                    className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-white"
+                    placeholder="Frankfurt"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase text-gray-500 font-bold">Date</label>
+                  <input
+                    type="date"
+                    value={createForm.date}
+                    onChange={(e) => setCreateForm((prev) => ({ ...prev, date: e.target.value }))}
+                    className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-white"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase text-gray-500 font-bold">Gate</label>
+                  <input
+                    value={createForm.gate}
+                    onChange={(e) => setCreateForm((prev) => ({ ...prev, gate: e.target.value }))}
+                    className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-white"
+                    placeholder="A12"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase text-gray-500 font-bold">STD</label>
+                  <input
+                    type="time"
+                    value={createForm.std}
+                    onChange={(e) => setCreateForm((prev) => ({ ...prev, std: e.target.value }))}
+                    className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-white"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase text-gray-500 font-bold">ETD</label>
+                  <input
+                    type="time"
+                    value={createForm.etd}
+                    onChange={(e) => setCreateForm((prev) => ({ ...prev, etd: e.target.value }))}
+                    className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-white"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase text-gray-500 font-bold">Aircraft</label>
+                  <input
+                    value={createForm.aircraft}
+                    onChange={(e) => setCreateForm((prev) => ({ ...prev, aircraft: e.target.value }))}
+                    className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-white"
+                    placeholder="A220"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase text-gray-500 font-bold">Registration</label>
+                  <input
+                    value={createForm.registration}
+                    onChange={(e) => setCreateForm((prev) => ({ ...prev, registration: e.target.value }))}
+                    className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-white"
+                    placeholder="YL-ABC"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="px-4 py-2 bg-gray-800 border border-gray-700 text-gray-300 rounded hover:bg-gray-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 border border-blue-500 text-white font-bold rounded hover:bg-blue-500"
+                >
+                  Create Flight
+                </button>
+              </div>
+            </form>
+         </div>
+       )}
     </div>
   );
 };
