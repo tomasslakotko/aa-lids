@@ -60,6 +60,9 @@ export const BoardingApp = () => {
   // Helper function to add notification for passenger
   const addPassengerNotification = async (pnr: string, message: string) => {
     try {
+      // Normalize PNR to uppercase
+      const normalizedPnr = pnr.toUpperCase().trim();
+      console.log('[Boarding] Adding notification for PNR:', normalizedPnr, 'Message:', message);
       const NOTIFY_KEY = 'mobile-notifications-v2'; // Changed key to v2 for new structure
       const saved = localStorage.getItem(NOTIFY_KEY);
       const notificationsByPnr: Record<string, string[]> = saved ? JSON.parse(saved) : {};
@@ -67,16 +70,19 @@ export const BoardingApp = () => {
       const fullMessage = `${timestamp} · ${message}`;
       
       // Initialize array for this PNR if it doesn't exist
-      if (!notificationsByPnr[pnr]) {
-        notificationsByPnr[pnr] = [];
+      if (!notificationsByPnr[normalizedPnr]) {
+        notificationsByPnr[normalizedPnr] = [];
       }
       
       // Add notification if not already present for this PNR
-      if (!notificationsByPnr[pnr].includes(fullMessage)) {
-        notificationsByPnr[pnr].unshift(fullMessage);
+      if (!notificationsByPnr[normalizedPnr].includes(fullMessage)) {
+        notificationsByPnr[normalizedPnr].unshift(fullMessage);
         // Keep only last 50 notifications per passenger
-        notificationsByPnr[pnr] = notificationsByPnr[pnr].slice(0, 50);
+        notificationsByPnr[normalizedPnr] = notificationsByPnr[normalizedPnr].slice(0, 50);
         localStorage.setItem(NOTIFY_KEY, JSON.stringify(notificationsByPnr));
+        console.log('[Boarding] Notification saved to localStorage for PNR:', normalizedPnr);
+      } else {
+        console.log('[Boarding] Notification already exists for PNR:', normalizedPnr);
       }
       // Request permission and send browser notification
       if ('Notification' in window) {
@@ -232,7 +238,9 @@ export const BoardingApp = () => {
     }
     
     // No comment, board directly
+    console.log('[Boarding] Attempting to board passenger with PNR:', pnr);
     const result = boardPassenger(pnr);
+    console.log('[Boarding] Board result:', result);
     if (!result) {
       const passenger = passengers.find(p => p.pnr === pnr);
       if (passenger) {
@@ -242,12 +250,9 @@ export const BoardingApp = () => {
       }
     } else {
       // Boarding successful - send notification
-      const passenger = passengers.find(p => p.pnr === pnr);
-      if (passenger) {
-        const flight = flights.find(f => f.id === passenger.flightId);
-        const flightInfo = flight ? `${flight.flightNumber} to ${flight.destinationCity || flight.destination}` : 'your flight';
-        await addPassengerNotification(pnr, `Boarding successful! Have a safe flight on ${flightInfo}! ✈️`);
-      }
+      console.log('[Boarding] Boarding successful, sending notification for PNR:', pnr);
+      await addPassengerNotification(pnr, 'HAVE A SAFE FLIGHT');
+      console.log('[Boarding] Notification sent for PNR:', pnr);
     }
   };
 
@@ -477,9 +482,7 @@ export const BoardingApp = () => {
         stopScanner();
       }
       // Send notification to passenger
-      const flight = flights.find(f => f.id === found.flightId) || selectedFlight;
-      const flightInfo = flight ? `${flight.flightNumber} to ${flight.destinationCity || flight.destination}` : 'your flight';
-      await addPassengerNotification(found.pnr, `Boarding successful! Have a safe flight on ${flightInfo}! ✈️`);
+      await addPassengerNotification(found.pnr, 'HAVE A SAFE FLIGHT');
       // Show success message
       setTimeout(() => {
         alert(`✓ Passenger ${found.lastName}, ${found.firstName} (${found.pnr})\n✓ Flight: ${selectedFlight?.flightNumber || found.flightId}\n✓ Seat: ${found.seat || 'TBA'}\n\nBoarded successfully!`);
@@ -1148,12 +1151,7 @@ export const BoardingApp = () => {
                   const result = boardPassenger(commentPassenger.pnr);
                   if (result) {
                     // Boarding successful - send notification
-                    const passenger = passengers.find(p => p.pnr === commentPassenger.pnr);
-                    if (passenger) {
-                      const flight = flights.find(f => f.id === passenger.flightId);
-                      const flightInfo = flight ? `${flight.flightNumber} to ${flight.destinationCity || flight.destination}` : 'your flight';
-                      await addPassengerNotification(commentPassenger.pnr, `Boarding successful! Have a safe flight on ${flightInfo}! ✈️`);
-                    }
+                    await addPassengerNotification(commentPassenger.pnr, 'HAVE A SAFE FLIGHT');
                     setShowCommentModal(false);
                     setCommentPassenger(null);
                   }

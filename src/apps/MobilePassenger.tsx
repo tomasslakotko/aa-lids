@@ -73,7 +73,8 @@ export const MobilePassengerApp = () => {
       const notificationsByPnr: Record<string, string[]> = saved ? JSON.parse(saved) : {};
       // Load notifications for selected PNR, or empty array if no PNR selected
       const selectedPnrFromStorage = localStorage.getItem(SELECTED_KEY) || '';
-      return notificationsByPnr[selectedPnrFromStorage] || [];
+      const normalizedPnr = selectedPnrFromStorage.toUpperCase().trim();
+      return notificationsByPnr[normalizedPnr] || [];
     } catch {
       return [];
     }
@@ -206,9 +207,10 @@ export const MobilePassengerApp = () => {
     // Load notifications for the selected PNR
     if (selectedPnr) {
       try {
+        const normalizedPnr = selectedPnr.toUpperCase().trim();
         const saved = localStorage.getItem(NOTIFY_KEY);
         const notificationsByPnr: Record<string, string[]> = saved ? JSON.parse(saved) : {};
-        setNotifications(notificationsByPnr[selectedPnr] || []);
+        setNotifications(notificationsByPnr[normalizedPnr] || []);
       } catch {
         setNotifications([]);
       }
@@ -221,9 +223,10 @@ export const MobilePassengerApp = () => {
     // Save notifications for the current selected PNR
     if (selectedPnr) {
       try {
+        const normalizedPnr = selectedPnr.toUpperCase().trim();
         const saved = localStorage.getItem(NOTIFY_KEY);
         const notificationsByPnr: Record<string, string[]> = saved ? JSON.parse(saved) : {};
-        notificationsByPnr[selectedPnr] = notifications;
+        notificationsByPnr[normalizedPnr] = notifications;
         localStorage.setItem(NOTIFY_KEY, JSON.stringify(notificationsByPnr));
       } catch (error) {
         console.error('Error saving notifications:', error);
