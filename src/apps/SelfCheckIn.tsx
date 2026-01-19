@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAirportStore } from '../store/airportStore';
-import { CheckCircle, Plane, Luggage, Download, User, MapPin, Clock, X, Keyboard, Smartphone, QrCode, CreditCard, ChevronDown, RotateCcw, Globe, Sun, Shield, HelpCircle, ArrowLeft } from 'lucide-react';
-import QRCode from 'react-qr-code';
+import { CheckCircle, Plane, X, Keyboard, Smartphone, QrCode, CreditCard, ChevronDown, Globe, Sun, Shield, HelpCircle, ArrowLeft } from 'lucide-react';
 import clsx from 'clsx';
 import { Html5Qrcode } from 'html5-qrcode';
 
@@ -12,7 +11,6 @@ export const SelfCheckInApp = () => {
   const [lookupMethod, setLookupMethod] = useState<'TYPE' | 'TAP' | 'SCAN' | 'INSERT' | null>(null);
   const [pnr, setPnr] = useState('');
   const [lastName, setLastName] = useState('');
-  const [ticketNumber, setTicketNumber] = useState('');
   const [selectedFlights, setSelectedFlights] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<'PASSENGER_ID' | 'ADDITIONAL_TRAVEL_INFO'>('PASSENGER_ID');
   const [bagCount, setBagCount] = useState(0);
@@ -42,7 +40,6 @@ export const SelfCheckInApp = () => {
   const resetState = () => {
     setPnr('');
     setLastName('');
-    setTicketNumber('');
     setSelectedFlights([]);
     setBagCount(0);
     setError('');
@@ -97,7 +94,7 @@ export const SelfCheckInApp = () => {
                 scanner.stop();
               }
             },
-            (errorMessage) => {
+            (_errorMessage) => {
               // Ignore errors
             }
           );
@@ -214,7 +211,7 @@ export const SelfCheckInApp = () => {
   };
   
   // Get flight status
-  const getFlightStatus = (flight: any) => {
+  const getFlightStatus = (_flight: any) => {
     // Simple logic - can be enhanced
     const delay = Math.random() > 0.7;
     return delay ? 'DELAYED' : 'ON TIME';
@@ -482,8 +479,7 @@ export const SelfCheckInApp = () => {
               <p className="text-xl mb-8">Once selected, press CONTINUE</p>
               
               <div className="space-y-6">
-                {foundFlights.map((flight, idx) => {
-                  const passenger = activeFoundPassengers.find(p => p.flightId === flight.id);
+                {foundFlights.map((flight) => {
                   const isSelected = selectedFlights.includes(flight.id);
                   const status = getFlightStatus(flight);
                   
@@ -493,6 +489,10 @@ export const SelfCheckInApp = () => {
                   depDate.setHours(depHour, depMin, 0);
                   const boardTime = new Date(depDate.getTime() - 30 * 60000);
                   const boardingTime = `${boardTime.getHours().toString().padStart(2, '0')}:${boardTime.getMinutes().toString().padStart(2, '0')}${boardTime.getHours() >= 12 ? 'pm' : 'am'}`;
+                  
+                  // Calculate arrival time (assume 2 hours flight time, or use etd if available)
+                  const arrTime = new Date(depDate.getTime() + 2 * 60 * 60000); // Default 2 hours
+                  const arrivalTime = flight.etd ? flight.etd : `${arrTime.getHours().toString().padStart(2, '0')}:${arrTime.getMinutes().toString().padStart(2, '0')}`;
                   
                   return (
                     <div
@@ -513,8 +513,8 @@ export const SelfCheckInApp = () => {
                         
                         <div className="flex-1">
                           <div className="flex items-center gap-4 mb-4">
-                            <span className="bg-red-600 px-3 py-1 rounded text-sm font-bold">FLIGHT {idx + 1}</span>
-                            <span className="text-2xl font-bold">{flight.flightNumber} {flight.airline || 'EMBROSS AIR'}</span>
+                            <span className="bg-red-600 px-3 py-1 rounded text-sm font-bold">FLIGHT</span>
+                            <span className="text-2xl font-bold">{flight.flightNumber} EMBROSS AIR</span>
                             <div className="text-sm">
                               <div>BOARDING TIME: {boardingTime}</div>
                               <div>GATE: {flight.gate || 'TBA'}</div>
@@ -541,7 +541,7 @@ export const SelfCheckInApp = () => {
                               <div className="text-lg font-semibold mb-2">
                                 {flight.destination} {flight.destinationCity || flight.destination}
                               </div>
-                              <div className="text-sm">ARRIVES: {flight.sta} {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase()}</div>
+                              <div className="text-sm">ARRIVES: {arrivalTime} {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase()}</div>
                             </div>
                           </div>
                           
@@ -621,13 +621,14 @@ export const SelfCheckInApp = () => {
                         </tr>
                       </thead>
                       <tbody>
-                        {foundFlights.filter(f => selectedFlights.includes(f.id)).map((flight, idx) => {
+                        {foundFlights.filter(f => selectedFlights.includes(f.id)).map((flight) => {
                           const depDate = new Date();
-                          const arrDate = new Date();
                           const [depHour, depMin] = flight.std.split(':').map(Number);
-                          const [arrHour, arrMin] = flight.sta.split(':').map(Number);
                           depDate.setHours(depHour, depMin, 0);
-                          arrDate.setHours(arrHour, arrMin, 0);
+                          
+                          // Calculate arrival time (assume 2 hours flight time, or use etd if available)
+                          const arrDate = new Date(depDate.getTime() + 2 * 60 * 60000); // Default 2 hours
+                          const arrivalTime = flight.etd || `${arrDate.getHours().toString().padStart(2, '0')}:${arrDate.getMinutes().toString().padStart(2, '0')}`;
                           
                           const isNextDay = arrDate.getDate() !== depDate.getDate();
                           
@@ -655,7 +656,7 @@ export const SelfCheckInApp = () => {
                                   {arrDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase()}
                                   {isNextDay && <span className="text-red-600"> +1</span>}
                                 </div>
-                                <div className="text-sm">{flight.sta}</div>
+                                <div className="text-sm">{arrivalTime}</div>
                               </td>
                             </tr>
                           );

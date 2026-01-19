@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useAirportStore, type LostItem } from '../store/airportStore';
-import { Search, Plus, Package, CheckCircle, Clock, MapPin, QrCode, X, Phone, Check, FileText, Archive, Pause, Menu, AlertCircle, Luggage, Mail } from 'lucide-react';
+import { Search, Plus, X, Check, AlertCircle, Luggage, Mail } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import clsx from 'clsx';
 import { generateBaggageStatusUpdateHtml } from '../services/mailgun';
@@ -372,7 +372,6 @@ export const LostAndFoundApp = () => {
   
   const generateFileReferenceNumber = (): string => {
     const prefix = 'AHL';
-    const random = Math.random().toString(36).substring(2, 7).toUpperCase();
     const count = lostItems.length + 1;
     return `${prefix} XQLXS${String(count).padStart(5, '0')}`;
   };
@@ -541,7 +540,7 @@ export const LostAndFoundApp = () => {
     const flight = flights.find(f => f.id === foundPassenger.flightId);
     
     // Build identification string
-    const identificationParts = [];
+    const identificationParts: string[] = [];
     if (selectedBagType) identificationParts.push(`Type:${selectedBagType}`);
     if (selectedColor) identificationParts.push(`Color:${selectedColor}`);
     if (selectedMaterial) identificationParts.push(`Material:${selectedMaterial}`);
@@ -769,7 +768,7 @@ export const LostAndFoundApp = () => {
     let pnr = '';
     
     if (selectedItem.flightNumber) {
-      const flight = flights.find(f => f.number === selectedItem.flightNumber);
+      const flight = flights.find(f => f.flightNumber === selectedItem.flightNumber);
       if (flight) {
         passenger = passengers.find(p => p.flightId === flight.id);
         if (passenger) {
@@ -863,7 +862,7 @@ export const LostAndFoundApp = () => {
     let pnr = '';
     
     if (selectedItem.flightNumber) {
-      const flight = flights.find(f => f.number === selectedItem.flightNumber);
+      const flight = flights.find(f => f.flightNumber === selectedItem.flightNumber);
       if (flight) {
         passenger = passengers.find(p => p.flightId === flight.id);
         if (passenger) {
@@ -917,7 +916,7 @@ export const LostAndFoundApp = () => {
       {activeTab !== 'HOME' && (
         <div className="flex items-end bg-[#C0C0C0] px-2 pt-2">
           <Tab label="HOME" active={false} onClick={() => setActiveTab('HOME')} first />
-          <Tab label="SEARCH" active={activeTab === 'SEARCH' || activeTab === 'LOOKUP'} onClick={() => setActiveTab('SEARCH')} />
+          <Tab label="SEARCH" active={activeTab === 'SEARCH'} onClick={() => setActiveTab('SEARCH')} />
           <Tab label="ADD ITEM" active={activeTab === 'ADD' || activeTab === 'REPORT_FIND'} onClick={() => setActiveTab('ADD')} />
           <Tab label="FILES" active={activeTab === 'FILES'} onClick={() => setActiveTab('FILES')} />
         </div>
@@ -956,26 +955,26 @@ export const LostAndFoundApp = () => {
           </div>
         )}
         
-        {(activeTab === 'SEARCH' || activeTab === 'LOOKUP') && (
+        {activeTab === 'SEARCH' && (
           <div className="bg-[#FDFBF7] border-2 border-[#A0A0A0] p-4 space-y-4">
             {/* Search Section */}
             <div className="grid grid-cols-4 gap-4">
               <LegacyInput 
                 label="SEARCH" 
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
                 placeholder="Item #, Description, Location..."
               />
               <LegacySelect
                 label="STATUS"
                 value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value as any)}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilterStatus(e.target.value as any)}
                 options={['ALL', 'FOUND', 'LOST', 'CLAIMED', 'SUSPENDED', 'CLOSED', 'ARCHIVED']}
               />
               <LegacySelect
                 label="CATEGORY"
                 value={filterCategory}
-                onChange={(e) => setFilterCategory(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilterCategory(e.target.value)}
                 options={['ALL', ...categories]}
               />
               <div className="flex items-end">
@@ -992,7 +991,7 @@ export const LostAndFoundApp = () => {
                 <LegacySelect
                   label="FILE REFERENCE NUMBER (FRN)"
                   value={selectedFile || ''}
-                  onChange={(e) => setSelectedFile(e.target.value || null)}
+                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedFile(e.target.value || null)}
                   options={[{ value: '', label: 'ALL ITEMS' }, ...fileReferenceNumbers.map(frn => ({ value: frn, label: frn }))]}
                 />
                 {selectedFile && (
@@ -1053,7 +1052,7 @@ export const LostAndFoundApp = () => {
                       <div className="col-span-1 text-black">{item.foundBy}</div>
                       <div className="col-span-1 text-[10px] text-black">{formatDate(item.foundDate)}</div>
                       <div className="col-span-3 flex gap-1">
-                        <LegacyButton small onClick={(e) => {
+                        <LegacyButton small onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                           e.stopPropagation();
                           setSelectedItem(item);
                           setShowQRModal(true);
@@ -1062,14 +1061,14 @@ export const LostAndFoundApp = () => {
                         </LegacyButton>
                         {(item.status === 'FOUND' || item.status === 'LOST') && (
                           <>
-                            <LegacyButton small primary onClick={(e) => {
+                            <LegacyButton small primary onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                               e.stopPropagation();
                               setSelectedItem(item);
                               setShowAddressModal(true);
                             }}>
                               CLAIM
                             </LegacyButton>
-                            <LegacyButton small onClick={(e) => {
+                            <LegacyButton small onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                               e.stopPropagation();
                               if (confirm('Suspend this item?')) {
                                 suspendLostItem(item.id);
@@ -1079,7 +1078,7 @@ export const LostAndFoundApp = () => {
                             </LegacyButton>
                           </>
                         )}
-                        <LegacyButton small onClick={(e) => {
+                        <LegacyButton small onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                           e.stopPropagation();
                           if (confirm('Archive this item?')) {
                             archiveLostItem(item.id);
@@ -1104,25 +1103,25 @@ export const LostAndFoundApp = () => {
               <LegacyInput 
                 label="FILE REFERENCE NUMBER (FRN)"
                 value={newFileReferenceNumber}
-                onChange={(e) => setNewFileReferenceNumber(e.target.value.toUpperCase())}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewFileReferenceNumber(e.target.value.toUpperCase())}
                 placeholder="Auto-generated if empty"
               />
               <LegacySelect
                 label="CATEGORY *"
                 value={newCategory}
-                onChange={(e) => setNewCategory(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setNewCategory(e.target.value)}
                 options={['', ...categories]}
               />
               <LegacyInput
                 label="FOUND BY *"
                 value={newFoundBy}
-                onChange={(e) => setNewFoundBy(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewFoundBy(e.target.value)}
                 placeholder="Staff name/ID"
               />
               <LegacyInput
                 label="FLIGHT NUMBER"
                 value={newFlightNumber}
-                onChange={(e) => setNewFlightNumber(e.target.value.toUpperCase())}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewFlightNumber(e.target.value.toUpperCase())}
                 placeholder="BA117"
               />
             </div>
@@ -1130,7 +1129,7 @@ export const LostAndFoundApp = () => {
             <LegacyTextarea
               label="DESCRIPTION *"
               value={newDescription}
-              onChange={(e) => setNewDescription(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNewDescription(e.target.value)}
               placeholder="Detailed description..."
               rows={3}
             />
@@ -1139,13 +1138,13 @@ export const LostAndFoundApp = () => {
               <LegacyInput
                 label="LOCATION FOUND *"
                 value={newLocationFound}
-                onChange={(e) => setNewLocationFound(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewLocationFound(e.target.value)}
                 placeholder="Gate A12, Terminal 1, etc."
               />
               <LegacyInput
                 label="STORAGE LOCATION"
                 value={newStorageLocation}
-                onChange={(e) => setNewStorageLocation(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewStorageLocation(e.target.value)}
                 placeholder="Room 101, Shelf A, etc."
               />
             </div>
@@ -1153,7 +1152,7 @@ export const LostAndFoundApp = () => {
             <LegacyTextarea
               label="NOTES"
               value={newNotes}
-              onChange={(e) => setNewNotes(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNewNotes(e.target.value)}
               placeholder="Additional notes..."
               rows={2}
             />
@@ -1232,25 +1231,25 @@ export const LostAndFoundApp = () => {
               <LegacyInput 
                 label="FILE REFERENCE NUMBER (FRN)"
                 value={newFileReferenceNumber}
-                onChange={(e) => setNewFileReferenceNumber(e.target.value.toUpperCase())}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewFileReferenceNumber(e.target.value.toUpperCase())}
                 placeholder="Auto-generated if empty"
               />
               <LegacySelect
                 label="CATEGORY *"
                 value={newCategory}
-                onChange={(e) => setNewCategory(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setNewCategory(e.target.value)}
                 options={['', ...categories]}
               />
               <LegacyInput
                 label="FOUND BY *"
                 value={newFoundBy}
-                onChange={(e) => setNewFoundBy(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewFoundBy(e.target.value)}
                 placeholder="Staff name/ID"
               />
               <LegacyInput
                 label="FLIGHT NUMBER"
                 value={newFlightNumber}
-                onChange={(e) => setNewFlightNumber(e.target.value.toUpperCase())}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewFlightNumber(e.target.value.toUpperCase())}
                 placeholder="BA117"
               />
             </div>
@@ -1258,7 +1257,7 @@ export const LostAndFoundApp = () => {
             <LegacyTextarea
               label="DESCRIPTION *"
               value={newDescription}
-              onChange={(e) => setNewDescription(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNewDescription(e.target.value)}
               placeholder="Detailed description..."
               rows={3}
             />
@@ -1267,13 +1266,13 @@ export const LostAndFoundApp = () => {
               <LegacyInput
                 label="LOCATION FOUND *"
                 value={newLocationFound}
-                onChange={(e) => setNewLocationFound(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewLocationFound(e.target.value)}
                 placeholder="Gate A12, Terminal 1, etc."
               />
               <LegacyInput
                 label="STORAGE LOCATION"
                 value={newStorageLocation}
-                onChange={(e) => setNewStorageLocation(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewStorageLocation(e.target.value)}
                 placeholder="Room 101, Shelf A, etc."
               />
             </div>
@@ -1281,7 +1280,7 @@ export const LostAndFoundApp = () => {
             <LegacyTextarea
               label="NOTES"
               value={newNotes}
-              onChange={(e) => setNewNotes(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNewNotes(e.target.value)}
               placeholder="Additional notes..."
               rows={2}
             />
@@ -1317,7 +1316,7 @@ export const LostAndFoundApp = () => {
                 <LegacyInput
                   label="RESERVATION NUMBER (PNR) *"
                   value={searchPnr}
-                  onChange={(e) => setSearchPnr(e.target.value.toUpperCase())}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchPnr(e.target.value.toUpperCase())}
                   placeholder="ABC123"
                 />
                 <div className="flex items-end">
@@ -1369,7 +1368,7 @@ export const LostAndFoundApp = () => {
                         name="bagStatus"
                         value="LOST"
                         checked={bagStatus === 'LOST'}
-                        onChange={(e) => setBagStatus(e.target.value as 'LOST' | 'DAMAGED')}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBagStatus(e.target.value as 'LOST' | 'DAMAGED')}
                         className="w-3 h-3"
                       />
                       <span className="text-black">Lost</span>
@@ -1380,7 +1379,7 @@ export const LostAndFoundApp = () => {
                         name="bagStatus"
                         value="DAMAGED"
                         checked={bagStatus === 'DAMAGED'}
-                        onChange={(e) => setBagStatus(e.target.value as 'LOST' | 'DAMAGED')}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBagStatus(e.target.value as 'LOST' | 'DAMAGED')}
                         className="w-3 h-3"
                       />
                       <span className="text-black">Damaged</span>
@@ -1559,13 +1558,13 @@ export const LostAndFoundApp = () => {
                   <LegacyInput
                     label="PHONE NUMBER *"
                     value={claimPhone}
-                    onChange={(e) => setClaimPhone(e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setClaimPhone(e.target.value)}
                     placeholder="7854091014"
                   />
                   <LegacyInput
                     label="EMAIL ADDRESS *"
                     value={claimEmail}
-                    onChange={(e) => setClaimEmail(e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setClaimEmail(e.target.value)}
                     placeholder="email@example.com"
                     type="email"
                   />
@@ -1574,7 +1573,7 @@ export const LostAndFoundApp = () => {
                   <LegacyInput
                     label="ALTERNATIVE PHONE"
                     value={claimAltPhone}
-                    onChange={(e) => setClaimAltPhone(e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setClaimAltPhone(e.target.value)}
                     placeholder="Alternative contact"
                   />
                 </div>
@@ -1585,32 +1584,32 @@ export const LostAndFoundApp = () => {
                     <LegacyInput
                       label="LINE 1"
                       value={addressLine1}
-                      onChange={(e) => setAddressLine1(e.target.value)}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAddressLine1(e.target.value)}
                     />
                     <LegacyInput
                       label="LINE 2"
                       value={addressLine2}
-                      onChange={(e) => setAddressLine2(e.target.value)}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAddressLine2(e.target.value)}
                     />
                     <LegacyInput
                       label="TOWN OR CITY"
                       value={addressTown}
-                      onChange={(e) => setAddressTown(e.target.value)}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAddressTown(e.target.value)}
                     />
                     <LegacyInput
                       label="COUNTY OR STATE"
                       value={addressCounty}
-                      onChange={(e) => setAddressCounty(e.target.value)}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAddressCounty(e.target.value)}
                     />
                     <LegacyInput
                       label="POSTCODE"
                       value={addressPostcode}
-                      onChange={(e) => setAddressPostcode(e.target.value.toUpperCase())}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAddressPostcode(e.target.value.toUpperCase())}
                     />
                     <LegacyInput
                       label="COUNTRY"
                       value={addressCountry}
-                      onChange={(e) => setAddressCountry(e.target.value)}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAddressCountry(e.target.value)}
                     />
                   </div>
                 </div>
@@ -1658,13 +1657,13 @@ export const LostAndFoundApp = () => {
               <LegacyInput
                 label="BAGGAGE TAG NUMBER"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
                 placeholder="BK01XXX, BK02XXX..."
               />
               <LegacyInput
                 label="PNR / BOOKING REFERENCE"
                 value={newFileReferenceNumber}
-                onChange={(e) => setNewFileReferenceNumber(e.target.value.toUpperCase())}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewFileReferenceNumber(e.target.value.toUpperCase())}
                 placeholder="ABC123"
               />
               <div className="flex items-end">
@@ -1804,13 +1803,13 @@ export const LostAndFoundApp = () => {
                 <LegacyInput
                   label="CLAIMANT NAME *"
                   value={claimName}
-                  onChange={(e) => setClaimName(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setClaimName(e.target.value)}
                   placeholder="Full name"
                 />
                 <LegacyInput
                   label="COUNTRY *"
                   value={addressCountry}
-                  onChange={(e) => setAddressCountry(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAddressCountry(e.target.value)}
                 />
               </div>
               
@@ -1818,7 +1817,7 @@ export const LostAndFoundApp = () => {
                 <LegacyInput
                   label="PHONE NUMBER *"
                   value={claimPhone}
-                  onChange={(e) => setClaimPhone(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setClaimPhone(e.target.value)}
                   placeholder="7854091014"
                 />
                 <div className="flex items-end">
@@ -1838,7 +1837,7 @@ export const LostAndFoundApp = () => {
               <LegacyInput
                 label="ALTERNATIVE PHONE NUMBER"
                 value={claimAltPhone}
-                onChange={(e) => setClaimAltPhone(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setClaimAltPhone(e.target.value)}
                 placeholder="Alternative contact"
               />
               
@@ -1846,7 +1845,7 @@ export const LostAndFoundApp = () => {
                 <LegacyInput
                   label="SEARCH"
                   value={addressSearchTerm}
-                  onChange={(e) => {
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                     setAddressSearchTerm(e.target.value);
                     setShowAddressSuggestions(e.target.value.length >= 3);
                   }}
@@ -1879,31 +1878,31 @@ export const LostAndFoundApp = () => {
               <LegacyInput
                 label="LINE 1 *"
                 value={addressLine1}
-                onChange={(e) => setAddressLine1(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAddressLine1(e.target.value)}
               />
               <LegacyInput
                 label="LINE 2"
                 value={addressLine2}
-                onChange={(e) => setAddressLine2(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAddressLine2(e.target.value)}
               />
               
               <div className="grid grid-cols-2 gap-4">
                 <LegacyInput
                   label="TOWN OR CITY"
                   value={addressTown}
-                  onChange={(e) => setAddressTown(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAddressTown(e.target.value)}
                 />
                 <LegacyInput
                   label="COUNTY OR STATE"
                   value={addressCounty}
-                  onChange={(e) => setAddressCounty(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAddressCounty(e.target.value)}
                 />
               </div>
               
               <LegacyInput
                 label="POSTCODE"
                 value={addressPostcode}
-                onChange={(e) => setAddressPostcode(e.target.value.toUpperCase())}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAddressPostcode(e.target.value.toUpperCase())}
               />
               
               <div className="flex gap-2 pt-4">
@@ -2025,7 +2024,7 @@ export const LostAndFoundApp = () => {
                 <LegacySelect
                   label="NEW STATUS"
                   value={newStatus}
-                  onChange={(e) => setNewStatus(e.target.value as LostItem['status'])}
+                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setNewStatus(e.target.value as LostItem['status'])}
                   options={['FOUND', 'LOST', 'CLAIMED', 'SUSPENDED', 'CLOSED', 'ARCHIVED']}
                 />
                 <div className="flex items-end">
@@ -2140,7 +2139,7 @@ export const LostAndFoundApp = () => {
                 label="DELIVERY DATE *"
                 type="date"
                 value={deliveryDate}
-                onChange={(e) => setDeliveryDate(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDeliveryDate(e.target.value)}
                 min={new Date().toISOString().split('T')[0]}
               />
               
