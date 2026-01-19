@@ -757,38 +757,85 @@ export const LostAndFoundApp = () => {
     return history.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   };
   
-  // Send email with baggage status update
-  const handleSendStatusEmail = async (statusType: 'FOUND' | 'DELIVERY_PLANNED' | 'DELIVERING' | 'DELIVERED' | 'NOT_FOUND' | 'READY_PICKUP') => {
-    if (!selectedItem) return;
-    
-    // Find passenger by PNR or flight number
+  // Extract PNR from text (looks for 6-character alphanumeric codes)
+  const extractPnr = (text: string): string | null => {
+    if (!text) return null;
+    // Look for PNR pattern: 6 alphanumeric characters, possibly preceded by "PNR:" or "PNR "
+    const pnrMatch = text.match(/(?:PNR[:\s]+)?([A-Z0-9]{6})/i);
+    return pnrMatch ? pnrMatch[1].toUpperCase() : null;
+  };
+
+  // Get email address from reservation/passenger data
+  const getEmailFromReservation = (item: LostItem): { email: string; name: string; pnr: string } | null => {
     let passenger = null;
-    let passengerEmail = '';
-    let passengerName = '';
     let pnr = '';
     
-    if (selectedItem.flightNumber) {
-      const flight = flights.find(f => f.flightNumber === selectedItem.flightNumber);
+    // Try to extract PNR from description or notes
+    const pnrFromDescription = extractPnr(item.description || '');
+    const pnrFromNotes = extractPnr(item.notes || '');
+    pnr = pnrFromDescription || pnrFromNotes || '';
+    
+    // If we have a PNR, find passenger directly
+    if (pnr) {
+      passenger = passengers.find(p => p.pnr === pnr);
+    }
+    
+    // If no passenger found by PNR, try by flight number
+    if (!passenger && item.flightNumber) {
+      const flight = flights.find(f => f.flightNumber === item.flightNumber);
       if (flight) {
         passenger = passengers.find(p => p.flightId === flight.id);
         if (passenger) {
-          passengerEmail = passenger.userEmail || '';
-          passengerName = `${passenger.firstName} ${passenger.lastName}`;
           pnr = passenger.pnr;
         }
       }
     }
     
-    // If no passenger found, try to get from contact info
-    if (!passengerEmail && selectedItem.contactInfo) {
-      const emailMatch = selectedItem.contactInfo.match(/[\w.-]+@[\w.-]+\.\w+/);
-      if (emailMatch) {
-        passengerEmail = emailMatch[0];
+    // If we found a passenger, get their email
+    if (passenger) {
+      let email = passenger.userEmail || '';
+      
+      // If no userEmail, check emails table for previously sent emails with this PNR
+      if (!email && pnr) {
+        const previousEmail = emails.find(e => e.pnr === pnr && e.status === 'SENT');
+        if (previousEmail) {
+          email = previousEmail.to;
+        }
+      }
+      
+      if (email) {
+        return {
+          email,
+          name: `${passenger.firstName} ${passenger.lastName}`,
+          pnr: passenger.pnr
+        };
       }
     }
     
-    if (!passengerEmail) {
-      alert('No email address found for this item. Please ensure the item has contact information.');
+    // Fallback: try to extract email from contact info
+    if (item.contactInfo) {
+      const emailMatch = item.contactInfo.match(/[\w.-]+@[\w.-]+\.\w+/);
+      if (emailMatch) {
+        return {
+          email: emailMatch[0],
+          name: item.claimedBy || 'Valued Passenger',
+          pnr: pnr || 'N/A'
+        };
+      }
+    }
+    
+    return null;
+  };
+
+  // Send email with baggage status update
+  const handleSendStatusEmail = async (statusType: 'FOUND' | 'DELIVERY_PLANNED' | 'DELIVERING' | 'DELIVERED' | 'NOT_FOUND' | 'READY_PICKUP') => {
+    if (!selectedItem) return;
+    
+    // Get email from reservation
+    const emailData = getEmailFromReservation(selectedItem);
+    
+    if (!emailData || !emailData.email) {
+      alert('No email address found for this item. Please ensure the item is linked to a reservation (PNR) or has contact information.');
       return;
     }
     
@@ -799,7 +846,7 @@ export const LostAndFoundApp = () => {
     }
     
     // Send email
-    await sendStatusEmail(statusType, passengerEmail, passengerName, pnr, selectedItem);
+    await sendStatusEmail(statusType, emailData.email, emailData.name, emailData.pnr, selectedItem);
   };
   
   const sendStatusEmail = async (
@@ -855,37 +902,15 @@ export const LostAndFoundApp = () => {
     
     setShowDeliveryDateModal(false);
     
-    // Find passenger info
-    let passenger = null;
-    let passengerEmail = '';
-    let passengerName = '';
-    let pnr = '';
+    // Get email from reservation
+    const emailData = getEmailFromReservation(selectedItem);
     
-    if (selectedItem.flightNumber) {
-      const flight = flights.find(f => f.flightNumber === selectedItem.flightNumber);
-      if (flight) {
-        passenger = passengers.find(p => p.flightId === flight.id);
-        if (passenger) {
-          passengerEmail = passenger.userEmail || '';
-          passengerName = `${passenger.firstName} ${passenger.lastName}`;
-          pnr = passenger.pnr;
-        }
-      }
-    }
-    
-    if (!passengerEmail && selectedItem.contactInfo) {
-      const emailMatch = selectedItem.contactInfo.match(/[\w.-]+@[\w.-]+\.\w+/);
-      if (emailMatch) {
-        passengerEmail = emailMatch[0];
-      }
-    }
-    
-    if (!passengerEmail) {
-      alert('No email address found for this item.');
+    if (!emailData || !emailData.email) {
+      alert('No email address found for this item. Please ensure the item is linked to a reservation (PNR) or has contact information.');
       return;
     }
     
-    await sendStatusEmail('DELIVERY_PLANNED', passengerEmail, passengerName, pnr, selectedItem, deliveryDate);
+    await sendStatusEmail('DELIVERY_PLANNED', emailData.email, emailData.name, emailData.pnr, selectedItem, deliveryDate);
     setDeliveryDate('');
   };
   
@@ -2041,6 +2066,26 @@ export const LostAndFoundApp = () => {
                 <Mail className="w-4 h-4" />
                 EMAIL MANAGEMENT
               </div>
+              {(() => {
+                const emailData = getEmailFromReservation(selectedItem);
+                return emailData && emailData.email ? (
+                  <div className="mb-3 p-2 bg-green-50 border border-green-300 rounded text-xs">
+                    <div className="font-bold text-green-800 mb-1">Email Address:</div>
+                    <div className="text-black">{emailData.email}</div>
+                    {emailData.name && (
+                      <div className="text-gray-600 mt-1">Passenger: {emailData.name}</div>
+                    )}
+                    {emailData.pnr && emailData.pnr !== 'N/A' && (
+                      <div className="text-gray-600">PNR: {emailData.pnr}</div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="mb-3 p-2 bg-yellow-50 border border-yellow-300 rounded text-xs">
+                    <div className="font-bold text-yellow-800">⚠ No email address found</div>
+                    <div className="text-gray-700 mt-1">Please ensure the item is linked to a reservation (PNR) or has contact information.</div>
+                  </div>
+                );
+              })()}
               <div className="grid grid-cols-2 gap-2">
                 <LegacyButton onClick={() => handleSendStatusEmail('FOUND')}>
                   <Mail className="w-3 h-3 inline mr-1" />
