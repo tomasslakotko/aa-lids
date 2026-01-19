@@ -113,6 +113,34 @@ export interface EmailConfirmation {
   content: string;
 }
 
+export interface LostItem {
+  id: string;
+  itemNumber: string; // Unique item number like "LF-2024-001" or "BK02XXX"
+  fileReferenceNumber?: string; // FRN for grouping multiple items
+  category: string;
+  description: string;
+  locationFound: string; // Gate, terminal, aircraft, etc.
+  foundDate: string; // ISO date string
+  foundBy: string; // Staff member name/ID
+  status: 'FOUND' | 'LOST' | 'CLAIMED' | 'ARCHIVED' | 'SUSPENDED' | 'CLOSED';
+  claimedBy?: string; // Name of person who claimed
+  claimedDate?: string;
+  contactInfo?: string; // Phone/email of claimant
+  phoneNumber?: string; // Primary phone number
+  phoneNumberValidated?: boolean; // Phone validation status
+  alternativePhone?: string; // Alternative phone number
+  // Address fields
+  addressLine1?: string;
+  addressLine2?: string;
+  townCity?: string;
+  countyState?: string;
+  postcode?: string;
+  country?: string;
+  notes?: string;
+  flightNumber?: string; // Related flight if found on aircraft
+  storageLocation?: string; // Where item is currently stored
+}
+
 interface AirportStore {
   flights: Flight[];
   passengers: Passenger[];
@@ -120,6 +148,7 @@ interface AirportStore {
   vouchers: Voucher[];
   complaints: Complaint[];
   emails: EmailConfirmation[];
+  lostItems: LostItem[];
   isDatabaseReady: boolean;
   
   // Actions
@@ -156,6 +185,22 @@ interface AirportStore {
   // Email Actions
   sendEmailConfirmation: (pnr: string, to: string, subject: string, content: string, htmlContent?: string) => Promise<string>;
   addEmailContact: (pnr: string, to: string) => void;
+  
+  // Lost & Found Actions
+  addLostItem: (item: LostItem) => void;
+  claimLostItem: (itemId: string, claimedBy: string, contactInfo?: string, phoneNumber?: string, address?: {
+    line1?: string;
+    line2?: string;
+    townCity?: string;
+    countyState?: string;
+    postcode?: string;
+    country?: string;
+  }) => void;
+  archiveLostItem: (itemId: string) => void;
+  suspendLostItem: (itemId: string) => void;
+  closeLostItemFile: (fileReferenceNumber: string) => void;
+  updateLostItem: (itemId: string, updates: Partial<LostItem>) => void;
+  validatePhoneNumber: (itemId: string, phoneNumber: string) => boolean;
   
   // Database Actions
   syncToDatabase: () => Promise<void>;
@@ -657,6 +702,7 @@ export const useAirportStore = create<AirportStore>()(
       vouchers: INITIAL_VOUCHERS,
       complaints: INITIAL_COMPLAINTS,
       emails: [],
+      lostItems: [],
       isDatabaseReady: false,
 
       updateFlightStatus: (flightId, status) => {
@@ -1094,7 +1140,7 @@ export const useAirportStore = create<AirportStore>()(
       },
 
       resetSimulation: () => {
-        set({ flights: generateFlights(), passengers: [], logs: [], vouchers: [], complaints: [] });
+        set({ flights: generateFlights(), passengers: [], logs: [], vouchers: [], complaints: [], lostItems: [] });
       },
       
       // Customer Service Actions
@@ -1349,6 +1395,127 @@ export const useAirportStore = create<AirportStore>()(
         }
       },
       
+      // Lost & Found Actions
+      addLostItem: (item) => {
+        set((state) => ({
+          lostItems: [...state.lostItems, item]
+        }));
+        get().addLog(`Lost item ${item.itemNumber} added: ${item.description}`, 'LOST_FOUND', 'INFO');
+        if (get().isDatabaseReady) {
+          get().syncToDatabase().catch(() => {});
+        }
+      },
+      
+      claimLostItem: (itemId, claimedBy, contactInfo, phoneNumber, address) => {
+        set((state) => ({
+          lostItems: state.lostItems.map(item =>
+            item.id === itemId
+              ? {
+                  ...item,
+                  status: 'CLAIMED' as const,
+                  claimedBy,
+                  claimedDate: new Date().toISOString(),
+                  contactInfo: contactInfo || item.contactInfo,
+                  phoneNumber: phoneNumber || item.phoneNumber,
+                  alternativePhone: item.alternativePhone,
+                  addressLine1: address?.line1 || item.addressLine1,
+                  addressLine2: address?.line2 || item.addressLine2,
+                  townCity: address?.townCity || item.townCity,
+                  countyState: address?.countyState || item.countyState,
+                  postcode: address?.postcode || item.postcode,
+                  country: address?.country || item.country
+                }
+              : item
+          )
+        }));
+        const item = get().lostItems.find(i => i.id === itemId);
+        if (item) {
+          get().addLog(`Lost item ${item.itemNumber} claimed by ${claimedBy}`, 'LOST_FOUND', 'SUCCESS');
+        }
+        if (get().isDatabaseReady) {
+          get().syncToDatabase().catch(() => {});
+        }
+      },
+      
+      archiveLostItem: (itemId) => {
+        set((state) => ({
+          lostItems: state.lostItems.map(item =>
+            item.id === itemId
+              ? { ...item, status: 'ARCHIVED' as const }
+              : item
+          )
+        }));
+        const item = get().lostItems.find(i => i.id === itemId);
+        if (item) {
+          get().addLog(`Lost item ${item.itemNumber} archived`, 'LOST_FOUND', 'INFO');
+        }
+        if (get().isDatabaseReady) {
+          get().syncToDatabase().catch(() => {});
+        }
+      },
+      
+      suspendLostItem: (itemId) => {
+        set((state) => ({
+          lostItems: state.lostItems.map(item =>
+            item.id === itemId
+              ? { ...item, status: 'SUSPENDED' as const }
+              : item
+          )
+        }));
+        const item = get().lostItems.find(i => i.id === itemId);
+        if (item) {
+          get().addLog(`Lost item ${item.itemNumber} suspended`, 'LOST_FOUND', 'WARNING');
+        }
+        if (get().isDatabaseReady) {
+          get().syncToDatabase().catch(() => {});
+        }
+      },
+      
+      closeLostItemFile: (fileReferenceNumber) => {
+        set((state) => ({
+          lostItems: state.lostItems.map(item =>
+            item.fileReferenceNumber === fileReferenceNumber
+              ? { ...item, status: 'CLOSED' as const }
+              : item
+          )
+        }));
+        get().addLog(`Lost item file ${fileReferenceNumber} closed`, 'LOST_FOUND', 'INFO');
+        if (get().isDatabaseReady) {
+          get().syncToDatabase().catch(() => {});
+        }
+      },
+      
+      updateLostItem: (itemId, updates) => {
+        set((state) => ({
+          lostItems: state.lostItems.map(item =>
+            item.id === itemId
+              ? { ...item, ...updates }
+              : item
+          )
+        }));
+        if (get().isDatabaseReady) {
+          get().syncToDatabase().catch(() => {});
+        }
+      },
+      
+      validatePhoneNumber: (itemId, phoneNumber) => {
+        // Simple phone validation (10+ digits)
+        const isValid = /^[\d\s\-\+\(\)]{10,}$/.test(phoneNumber);
+        if (isValid) {
+          set((state) => ({
+            lostItems: state.lostItems.map(item =>
+              item.id === itemId
+                ? { ...item, phoneNumber, phoneNumberValidated: true }
+                : item
+            )
+          }));
+          if (get().isDatabaseReady) {
+            get().syncToDatabase().catch(() => {});
+          }
+        }
+        return isValid;
+      },
+      
       // Database Actions
       syncToDatabase: async () => {
         try {
@@ -1361,7 +1528,8 @@ export const useAirportStore = create<AirportStore>()(
             logs: state.logs,
             vouchers: state.vouchers,
             complaints: state.complaints,
-            emails: state.emails
+            emails: state.emails,
+            lostItems: state.lostItems
           });
           set({ isDatabaseReady: true });
           // Reset flag after a short delay to allow DB to process
@@ -1450,6 +1618,7 @@ export const useAirportStore = create<AirportStore>()(
             vouchers: data.vouchers,
             complaints: data.complaints,
             emails: data.emails,
+            lostItems: data.lostItems || [],
             isDatabaseReady: true
           });
           get().addLog('Data loaded from database', 'SYSTEM', 'SUCCESS');

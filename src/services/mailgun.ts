@@ -92,6 +92,14 @@ export const sendEmailViaMailgun = async (params: SendEmailParams): Promise<{ su
   }
 };
 
+// Convenience wrapper function
+export const sendEmail = async (params: SendEmailParams): Promise<void> => {
+  const result = await sendEmailViaMailgun(params);
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to send email');
+  }
+};
+
 // Helper to convert plain text to HTML
 export const textToHtml = (text: string): string => {
   return text
@@ -445,6 +453,326 @@ export const generateCheckInConfirmationHtml = (params: {
     
     <div class="footer">
       Thank you for choosing our airline, we wish you a pleasant journey.
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+};
+
+// Generate lost baggage report HTML email
+export const generateLostBaggageReportHtml = (params: {
+  passengerName: string;
+  pnr: string;
+  fileReferenceNumber: string;
+  bags: Array<{
+    bagNumber: string;
+    status: string;
+    type?: string;
+    color?: string;
+    material?: string;
+    external?: string;
+  }>;
+  flightNumber?: string;
+  route?: string;
+  phoneNumber?: string;
+  address?: string;
+}): string => {
+  const { passengerName, pnr, fileReferenceNumber, bags, flightNumber, route, phoneNumber, address } = params;
+  
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f5f5f5; }
+    .container { max-width: 700px; margin: 20px auto; background-color: #ffffff; }
+    .header { padding: 30px 20px; background-color: #dc3545; color: #ffffff; }
+    .header h1 { margin: 0; font-size: 24px; }
+    .content { padding: 30px 20px; }
+    .greeting { font-size: 16px; color: #333; margin-bottom: 20px; }
+    .important-notice { background-color: #fff3cd; padding: 15px; margin: 20px 0; border-left: 4px solid #ffc107; border-radius: 4px; }
+    .important-notice strong { color: #856404; }
+    .section-title { font-size: 18px; font-weight: bold; color: #333; margin: 25px 0 15px 0; border-bottom: 2px solid #e0e0e0; padding-bottom: 10px; }
+    .info-box { background-color: #f9f9f9; padding: 15px; margin: 15px 0; border-left: 4px solid #0066cc; border-radius: 4px; }
+    .info-row { margin: 8px 0; font-size: 14px; }
+    .info-label { font-weight: bold; color: #333; display: inline-block; width: 180px; }
+    .info-value { color: #666; }
+    .bag-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+    .bag-table th { background-color: #e0e0e0; padding: 12px; text-align: left; font-weight: bold; color: #333; border: 1px solid #ccc; }
+    .bag-table td { padding: 12px; border: 1px solid #ccc; color: #333; }
+    .bag-table tr:nth-child(even) { background-color: #f9f9f9; }
+    .reference-box { background-color: #e7f3ff; padding: 15px; margin: 20px 0; border-left: 4px solid #0066cc; border-radius: 4px; }
+    .reference-box strong { color: #0066cc; font-size: 16px; }
+    .contact-info { background-color: #f0f0f0; padding: 15px; margin: 20px 0; border-radius: 4px; }
+    .footer { padding: 20px; background-color: #f9f9f9; text-align: center; font-size: 12px; color: #666; border-top: 1px solid #e0e0e0; }
+    .status-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px; }
+    .status-lost { background-color: #f8d7da; color: #721c24; }
+    .status-damaged { background-color: #fff3cd; color: #856404; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>⚠️ Lost Baggage Report</h1>
+    </div>
+    
+    <div class="content">
+      <div class="greeting">Dear ${passengerName},</div>
+      
+      <div class="important-notice">
+        <strong>IMPORTANT:</strong> We have received your lost baggage report. Our team is working to locate your items. Please keep this reference number for all future communications.
+      </div>
+      
+      <div class="reference-box">
+        <strong>File Reference Number (FRN):</strong> ${fileReferenceNumber}<br>
+        <strong>PNR:</strong> ${pnr}
+      </div>
+      
+      <div class="section-title">Reported Baggage Details</div>
+      <table class="bag-table">
+        <thead>
+          <tr>
+            <th>Bag Number</th>
+            <th>Status</th>
+            <th>Type</th>
+            <th>Color</th>
+            <th>Material</th>
+            <th>External Features</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${bags.map(bag => `
+            <tr>
+              <td><strong>${bag.bagNumber}</strong></td>
+              <td><span class="status-badge ${bag.status === 'LOST' ? 'status-lost' : 'status-damaged'}">${bag.status}</span></td>
+              <td>${bag.type || 'N/A'}</td>
+              <td>${bag.color || 'N/A'}</td>
+              <td>${bag.material || 'N/A'}</td>
+              <td>${bag.external || 'N/A'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      
+      ${flightNumber ? `
+      <div class="section-title">Flight Information</div>
+      <div class="info-box">
+        <div class="info-row">
+          <span class="info-label">Flight Number:</span>
+          <span class="info-value">${flightNumber}</span>
+        </div>
+        ${route ? `
+        <div class="info-row">
+          <span class="info-label">Route:</span>
+          <span class="info-value">${route}</span>
+        </div>
+        ` : ''}
+      </div>
+      ` : ''}
+      
+      <div class="section-title">Contact Information</div>
+      <div class="contact-info">
+        ${phoneNumber ? `
+        <div class="info-row">
+          <span class="info-label">Phone Number:</span>
+          <span class="info-value">${phoneNumber}</span>
+        </div>
+        ` : ''}
+        ${address ? `
+        <div class="info-row">
+          <span class="info-label">Address:</span>
+          <span class="info-value">${address}</span>
+        </div>
+        ` : ''}
+      </div>
+      
+      <div class="section-title">What Happens Next?</div>
+      <div class="info-box">
+        <ul style="margin: 10px 0; padding-left: 20px; color: #333;">
+          <li>Our baggage services team will search for your items</li>
+          <li>You will be contacted via phone or email with updates</li>
+          <li>If your baggage is found, we will arrange for delivery</li>
+          <li>Please keep your File Reference Number (FRN) for tracking</li>
+        </ul>
+      </div>
+      
+      <div class="important-notice">
+        <strong>Need to update your report?</strong><br>
+        Please contact our Lost & Found department with your File Reference Number: <strong>${fileReferenceNumber}</strong>
+      </div>
+    </div>
+    
+    <div class="footer">
+      <p>This is an automated confirmation email. Please do not reply to this message.</p>
+      <p>For assistance, please contact our Lost & Found department.</p>
+      <p>Phone: +371 67280422 | Email: lostandfound@airport.com</p>
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+};
+
+// Generate baggage status update HTML email
+export const generateBaggageStatusUpdateHtml = (params: {
+  passengerName: string;
+  pnr: string;
+  fileReferenceNumber: string;
+  bagNumber: string;
+  statusType: 'FOUND' | 'DELIVERY_PLANNED' | 'DELIVERING' | 'DELIVERED' | 'NOT_FOUND' | 'READY_PICKUP';
+  deliveryDate?: string;
+  contactInfo?: string;
+}): string => {
+  const { passengerName, pnr, fileReferenceNumber, bagNumber, statusType, deliveryDate, contactInfo } = params;
+  
+  const getStatusContent = () => {
+    switch (statusType) {
+      case 'FOUND':
+        return {
+          title: '✅ Bag Found',
+          headerColor: '#28a745',
+          message: 'We are pleased to inform you that we have located your baggage.',
+          action: 'Please contact us to arrange for delivery or pickup.',
+          details: 'Our team will contact you shortly to coordinate the next steps.'
+        };
+      case 'DELIVERY_PLANNED':
+        return {
+          title: '📅 Delivery Planned',
+          headerColor: '#17a2b8',
+          message: 'Delivery of your baggage has been scheduled.',
+          action: deliveryDate ? `Your baggage will be delivered on ${deliveryDate}.` : 'Delivery date will be confirmed shortly.',
+          details: 'Please ensure someone is available to receive the delivery.'
+        };
+      case 'DELIVERING':
+        return {
+          title: '🚚 Bag in Transit',
+          headerColor: '#ffc107',
+          message: 'Your baggage is currently being delivered.',
+          action: 'Please be available to receive your baggage.',
+          details: 'The delivery team is on the way to your address.'
+        };
+      case 'DELIVERED':
+        return {
+          title: '✅ Bag Delivered',
+          headerColor: '#28a745',
+          message: 'Your baggage has been successfully delivered.',
+          action: 'Please check your baggage and confirm receipt.',
+          details: 'If you have any concerns, please contact us immediately.'
+        };
+      case 'NOT_FOUND':
+        return {
+          title: '🔍 Still Searching',
+          headerColor: '#ffc107',
+          message: 'We are continuing our search for your baggage.',
+          action: 'Our team is actively searching for your item.',
+          details: 'We will update you as soon as we have any information.'
+        };
+      case 'READY_PICKUP':
+        return {
+          title: '📦 Ready for Pickup',
+          headerColor: '#17a2b8',
+          message: 'Your baggage is ready for pickup.',
+          action: 'Please visit our Lost & Found office to collect your baggage.',
+          details: contactInfo || 'Please bring a valid ID and your File Reference Number.'
+        };
+      default:
+        return {
+          title: 'Baggage Update',
+          headerColor: '#6c757d',
+          message: 'Update regarding your baggage.',
+          action: 'Please contact us for more information.',
+          details: ''
+        };
+    }
+  };
+  
+  const statusContent = getStatusContent();
+  
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f5f5f5; }
+    .container { max-width: 700px; margin: 20px auto; background-color: #ffffff; }
+    .header { padding: 30px 20px; background-color: ${statusContent.headerColor}; color: #ffffff; }
+    .header h1 { margin: 0; font-size: 24px; }
+    .content { padding: 30px 20px; }
+    .greeting { font-size: 16px; color: #333; margin-bottom: 20px; }
+    .status-box { background-color: #f0f8ff; padding: 20px; margin: 20px 0; border-left: 4px solid ${statusContent.headerColor}; border-radius: 4px; }
+    .status-box strong { color: ${statusContent.headerColor}; font-size: 18px; }
+    .info-box { background-color: #f9f9f9; padding: 15px; margin: 15px 0; border-left: 4px solid #0066cc; border-radius: 4px; }
+    .info-row { margin: 8px 0; font-size: 14px; }
+    .info-label { font-weight: bold; color: #333; display: inline-block; width: 180px; }
+    .info-value { color: #666; }
+    .action-box { background-color: #fff3cd; padding: 15px; margin: 20px 0; border-left: 4px solid #ffc107; border-radius: 4px; }
+    .action-box strong { color: #856404; }
+    .contact-box { background-color: #e7f3ff; padding: 15px; margin: 20px 0; border-left: 4px solid #0066cc; border-radius: 4px; }
+    .footer { padding: 20px; background-color: #f9f9f9; text-align: center; font-size: 12px; color: #666; border-top: 1px solid #e0e0e0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>${statusContent.title}</h1>
+    </div>
+    
+    <div class="content">
+      <div class="greeting">Dear ${passengerName},</div>
+      
+      <div class="status-box">
+        <strong>${statusContent.message}</strong>
+      </div>
+      
+      <div class="info-box">
+        <div class="info-row">
+          <span class="info-label">File Reference Number (FRN):</span>
+          <span class="info-value">${fileReferenceNumber}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Bag Number:</span>
+          <span class="info-value">${bagNumber}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">PNR:</span>
+          <span class="info-value">${pnr}</span>
+        </div>
+        ${deliveryDate ? `
+        <div class="info-row">
+          <span class="info-label">Delivery Date:</span>
+          <span class="info-value">${deliveryDate}</span>
+        </div>
+        ` : ''}
+      </div>
+      
+      <div class="action-box">
+        <strong>Action Required:</strong><br>
+        ${statusContent.action}
+      </div>
+      
+      ${statusContent.details ? `
+      <div class="info-box">
+        <p style="margin: 0; color: #333;">${statusContent.details}</p>
+      </div>
+      ` : ''}
+      
+      ${statusType === 'FOUND' || statusType === 'READY_PICKUP' ? `
+      <div class="contact-box">
+        <strong>Contact Information:</strong><br>
+        Phone: +371 67280422<br>
+        Email: lostandfound@airport.com<br>
+        ${contactInfo ? `Additional Info: ${contactInfo}` : ''}
+      </div>
+      ` : ''}
+    </div>
+    
+    <div class="footer">
+      <p>This is an automated status update email. Please do not reply to this message.</p>
+      <p>For assistance, please contact our Lost & Found department.</p>
+      <p>Phone: +371 67280422 | Email: lostandfound@airport.com</p>
     </div>
   </div>
 </body>

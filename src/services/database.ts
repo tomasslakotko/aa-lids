@@ -1,4 +1,4 @@
-import type { Flight, Passenger, LogEntry, Voucher, Complaint, EmailConfirmation } from '../store/airportStore';
+import type { Flight, Passenger, LogEntry, Voucher, Complaint, EmailConfirmation, LostItem } from '../store/airportStore';
 
 // Supabase REST API Configuration
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
@@ -124,13 +124,14 @@ export async function loadAllData() {
   }
   
   try {
-    const [flights, passengers, logs, vouchers, complaints, emails] = await Promise.all([
+    const [flights, passengers, logs, vouchers, complaints, emails, lostItems] = await Promise.all([
       loadFlights(),
       loadPassengers(),
       loadLogs(),
       loadVouchers(),
       loadComplaints(),
-      loadEmails()
+      loadEmails(),
+      loadLostItems()
     ]);
 
     return {
@@ -139,7 +140,8 @@ export async function loadAllData() {
       logs,
       vouchers,
       complaints,
-      emails
+      emails,
+      lostItems
     };
   } catch (error) {
     console.error('Error loading data from database:', error);
@@ -521,6 +523,83 @@ export async function saveEmails(emails: EmailConfirmation[]) {
   }
 }
 
+// Lost Items
+async function loadLostItems(): Promise<LostItem[]> {
+  const rows = await supabaseTable('lost_items', 'GET');
+  return rows.map((row: any) => ({
+    id: row.id,
+    itemNumber: row.item_number,
+    fileReferenceNumber: row.file_reference_number,
+    category: row.category,
+    description: row.description,
+    locationFound: row.location_found,
+    foundDate: row.found_date instanceof Date ? row.found_date.toISOString() : row.found_date,
+    foundBy: row.found_by,
+    status: row.status,
+    claimedBy: row.claimed_by,
+    claimedDate: row.claimed_date instanceof Date ? row.claimed_date.toISOString() : row.claimed_date,
+    contactInfo: row.contact_info,
+    phoneNumber: row.phone_number,
+    phoneNumberValidated: row.phone_number_validated,
+    alternativePhone: row.alternative_phone,
+    addressLine1: row.address_line1,
+    addressLine2: row.address_line2,
+    townCity: row.town_city,
+    countyState: row.county_state,
+    postcode: row.postcode,
+    country: row.country,
+    notes: row.notes,
+    flightNumber: row.flight_number,
+    storageLocation: row.storage_location
+  })) as LostItem[];
+}
+
+export async function saveLostItems(lostItems: LostItem[]) {
+  try {
+    if (lostItems.length === 0) return;
+    
+    const lostItemsData = lostItems.map(item => ({
+      id: item.id,
+      item_number: item.itemNumber,
+      file_reference_number: item.fileReferenceNumber,
+      category: item.category,
+      description: item.description,
+      location_found: item.locationFound,
+      found_date: item.foundDate,
+      found_by: item.foundBy,
+      status: item.status,
+      claimed_by: item.claimedBy,
+      claimed_date: item.claimedDate,
+      contact_info: item.contactInfo,
+      phone_number: item.phoneNumber,
+      phone_number_validated: item.phoneNumberValidated,
+      alternative_phone: item.alternativePhone,
+      address_line1: item.addressLine1,
+      address_line2: item.addressLine2,
+      town_city: item.townCity,
+      county_state: item.countyState,
+      postcode: item.postcode,
+      country: item.country,
+      notes: item.notes,
+      flight_number: item.flightNumber,
+      storage_location: item.storageLocation
+    }));
+    
+    // Use UPSERT to avoid duplicate key errors
+    for (let i = 0; i < lostItemsData.length; i += 50) {
+      const batch = lostItemsData.slice(i, i + 50);
+      await Promise.all(
+        batch.map(item => supabaseUpsert('lost_items', item, 'id').catch(err => {
+          console.warn(`Failed to upsert lost item ${item.id}:`, err.message);
+        }))
+      );
+    }
+  } catch (error) {
+    console.error('Error saving lost items:', error);
+    throw error;
+  }
+}
+
 // Save all data at once (for batch operations)
 export async function saveAllData(data: {
   flights: Flight[];
@@ -529,6 +608,7 @@ export async function saveAllData(data: {
   vouchers: Voucher[];
   complaints: Complaint[];
   emails: EmailConfirmation[];
+  lostItems?: LostItem[];
 }) {
   try {
     await Promise.all([
@@ -537,7 +617,8 @@ export async function saveAllData(data: {
       saveLogs(data.logs),
       saveVouchers(data.vouchers),
       saveComplaints(data.complaints),
-      saveEmails(data.emails)
+      saveEmails(data.emails),
+      saveLostItems(data.lostItems || [])
     ]);
   } catch (error) {
     console.error('Error saving all data:', error);

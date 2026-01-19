@@ -126,3 +126,8 @@ export const generateReceiptHtml = (params: {
   `.trim();
 };
 
+
+
+
+
+

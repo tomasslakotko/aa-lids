@@ -15,7 +15,8 @@ import {
   MonitorPlay,
   Tv,
   Smartphone,
-  ScanLine
+  ScanLine,
+  Package
 } from 'lucide-react';
 
 // Import Apps
@@ -32,6 +33,7 @@ import { FIDSApp } from './apps/FIDS';
 import { GateScreenApp } from './apps/GateScreen';
 import { SelfCheckInApp } from './apps/SelfCheckIn';
 import { ScannerApp } from './apps/Scanner';
+import { LostAndFoundApp } from './apps/LostAndFound';
 
 function App() {
   const registerApp = useOSStore((state) => state.registerApp);
@@ -173,6 +175,15 @@ function App() {
       defaultWidth: 800,
       defaultHeight: 1000,
       folder: 'GATE'
+    });
+
+    registerApp({
+      id: 'lostfound',
+      title: 'Lost & Found',
+      icon: Package,
+      component: LostAndFoundApp,
+      defaultWidth: 1000,
+      defaultHeight: 800
     });
 
   }, [registerApp]);
